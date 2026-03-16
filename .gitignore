@@ -1,0 +1,14 @@
+# Node
+node_modules/
+dist/
+build/
+
+# Go
+bin/
+tmp/
+
+# Environment files
+.env
+
+# OS
+.DS_Store

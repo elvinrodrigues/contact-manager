@@ -1,0 +1,28 @@
+package models
+
+import (
+	"time"
+)
+
+type Contact struct {
+	ID         int        `json:"id"`
+	Name       string     `json:"name"`
+	Phone      string     `json:"phone"`
+	Email      *string    `json:"email,omitempty"`
+	CategoryID int        `json:"category_id"`
+	CreatedAt  time.Time  `json:"created_at"`
+	UpdatedAt  time.Time  `json:"updated_at"`
+	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
+}
+
+type CreateContactResult struct {
+	Status     string    `json:"status"`
+	Contact    *Contact  `json:"contact,omitempty"`
+	Duplicates []Contact `json:"duplicates,omitempty"`
+}
+type ListContactsResult struct {
+	Contacts []Contact `json:"contacts"`
+	Page     int       `json:"page"`
+	Limit    int       `json:"limit"`
+	Total    int       `json:"total"`
+}
