@@ -23,7 +23,7 @@ export function Navbar() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const isDark = theme === "dark";
+  const isDark = mounted && theme === "dark";
 
   return (
     <header
@@ -31,7 +31,7 @@ export function Navbar() {
         "sticky top-0 z-50 w-full border-b border-border/60",
         "bg-background/80 backdrop-blur-lg backdrop-saturate-150",
         "transition-shadow duration-200",
-        scrolled && "shadow-sm"
+        scrolled && "shadow-sm",
       )}
     >
       <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
@@ -43,7 +43,11 @@ export function Navbar() {
             <div className="absolute inset-0 rounded-xl bg-primary/30 blur-md" />
             {/* Icon container */}
             <div className="relative w-9 h-9 rounded-xl bg-primary flex items-center justify-center shadow-sm">
-              <Users size={17} className="text-primary-foreground" strokeWidth={2.2} />
+              <Users
+                size={17}
+                className="text-primary-foreground"
+                strokeWidth={2.2}
+              />
             </div>
           </div>
 
@@ -66,11 +70,17 @@ export function Navbar() {
             variant="ghost"
             size="icon"
             onClick={() => setTheme(isDark ? "light" : "dark")}
-            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            aria-label={
+              mounted
+                ? isDark
+                  ? "Switch to light mode"
+                  : "Switch to dark mode"
+                : "Toggle theme"
+            }
             className={cn(
               "relative h-9 w-9 rounded-xl overflow-hidden",
               "text-muted-foreground hover:text-foreground",
-              "hover:bg-accent transition-colors duration-150"
+              "hover:bg-accent transition-colors duration-150",
             )}
           >
             {/* Sun icon — visible in dark mode */}
@@ -79,7 +89,7 @@ export function Navbar() {
                 "absolute inset-0 flex items-center justify-center transition-all duration-300",
                 mounted && isDark
                   ? "opacity-100 rotate-0 scale-100"
-                  : "opacity-0 rotate-90 scale-50"
+                  : "opacity-0 rotate-90 scale-50",
               )}
             >
               <Sun size={17} strokeWidth={2} />
@@ -91,7 +101,7 @@ export function Navbar() {
                 "absolute inset-0 flex items-center justify-center transition-all duration-300",
                 mounted && !isDark
                   ? "opacity-100 rotate-0 scale-100"
-                  : "opacity-0 -rotate-90 scale-50"
+                  : "opacity-0 -rotate-90 scale-50",
               )}
             >
               <Moon size={17} strokeWidth={2} />

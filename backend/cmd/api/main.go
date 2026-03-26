@@ -7,6 +7,7 @@ import (
 	"contact-manager/internal/services"
 	"log"
 	"net/http"
+	"os"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
@@ -40,5 +41,9 @@ func main() {
 
 	log.Println("Server running on :8080")
 
-	http.ListenAndServe(":8080", router)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+	http.ListenAndServe(":"+port, router)
 }
