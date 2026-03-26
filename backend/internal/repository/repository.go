@@ -2,6 +2,7 @@ package repository
 
 import (
 	"contact-manager/internal/models"
+	"context"
 	"database/sql"
 )
 
@@ -234,4 +235,65 @@ func (r *ContactRepository) RestoreContactByID(id int) error {
 	}
 	return nil
 
+}
+func (r *ContactRepository) UpdateContactByID(id int, name string, email string, category int) error {
+	query := `
+		update contacts
+		set name = $2,
+			email = $3,
+			category = $4
+		where id = $1
+		and deleted_at is null
+		`
+	restult, err := r.DB.Exec(query, id, name, email, category)
+	if err != nil {
+		return err
+	}
+	rowsAffected, err := restult.RowsAffected()
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		return sql.ErrNoRows
+	}
+	return nil
+
+}
+func (r *ContactRepository) SearchContacts(ctx context.Context, query string) ([]models.Contact, error) {
+	searchTerm := "%" + query + "%"
+
+	sqlQuery := `
+	SELECT id, name, phone, email, category_id
+	FROM contacts
+	WHERE deleted_at IS NULL
+	AND (name ILIKE $1 OR phone ILIKE $1);
+	`
+
+	rows, err := r.DB.QueryContext(ctx, sqlQuery, searchTerm)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var contacts []models.Contact
+
+	for rows.Next() {
+		var c models.Contact
+
+		err := rows.Scan(
+			&c.ID,
+			&c.Name,
+			&c.Phone,
+			&c.Email,
+			&c.CategoryID,
+		)
+		if err != nil {
+			return nil, err
+		}
+
+		contacts = append(contacts, c)
+	}
+
+	return contacts, rows.Err()
 }

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
 
@@ -154,5 +155,51 @@ func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Contact restored successfully",
+	})
+}
+func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	name := chi.URLParam(r, "name")
+	email := chi.URLParam(r, "email")
+	categoryStr := chi.URLParam(r, "category")
+
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		http.Error(w, "invalid contact id", http.StatusBadRequest)
+	}
+	category, err := strconv.Atoi(categoryStr)
+	if err != nil {
+		http.Error(w, "invalid contact category", http.StatusBadRequest)
+	}
+
+	err = h.Service.UpdateContactByID(id, name, email, category)
+
+	if err != nil {
+		http.Error(w, "contact not found", http.StatusNotFound)
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"message": "Contact restored successfully",
+	})
+}
+func (h *ContactHandler) SearchContacts(w http.ResponseWriter, r *http.Request) {
+
+	query := r.URL.Query().Get("q")
+
+	if query == "" {
+		http.Error(w, "search query is required", http.StatusBadRequest)
+		return
+	}
+
+	contacts, err := h.Service.SearchContacts(r.Context(), query)
+	if err != nil {
+		log.Println("search error:", err)
+		http.Error(w, "failed to search contacts", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(models.ListContactsResult{
+		Contacts: contacts,
 	})
 }

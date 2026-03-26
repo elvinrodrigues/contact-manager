@@ -31,10 +31,12 @@ func main() {
 
 	router.Post("/contacts", handler.CreateContact)
 	router.Get("/contacts", handler.ListContacts)
+	router.Get("/contacts/search", handler.SearchContacts)
 	router.Get("/contacts/{id}", handler.GetContactByID)
 	router.Delete("/contacts/{id}", handler.DeleteContactByID)
 	router.Get("/contacts/deleted", handler.ListDeletedContacts)
 	router.Patch("/contacts/{id}/restore", handler.RestoreContactByID)
+	router.Put("/contacts/{id}", handler.UpdateContactByID)
 
 	log.Println("Server running on :8080")
 

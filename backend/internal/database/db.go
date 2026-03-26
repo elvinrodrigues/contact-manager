@@ -22,4 +22,3 @@ func ConnectDB() *sql.DB {
 	log.Println("Connected to PostgreSQL")
 	return db
 }
-

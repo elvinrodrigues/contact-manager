@@ -3,6 +3,8 @@ package services
 import (
 	"contact-manager/internal/models"
 	"contact-manager/internal/utils"
+	"context"
+	"strings"
 )
 
 // Function for creating contacts
@@ -119,4 +121,21 @@ func (s *ContactService) RestoreContactByID(id int) error {
 		return err
 	}
 	return nil
+}
+func (s *ContactService) UpdateContactByID(id int, name string, email string, category int) error {
+	err := s.Repo.UpdateContactByID(id, name, email, category)
+
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (s *ContactService) SearchContacts(ctx context.Context, query string) ([]models.Contact, error) {
+	query = strings.TrimSpace(query)
+
+	// if len(query) < 2 {
+	// 	return nil, errors.New("query too short")
+	// }
+
+	return s.Repo.SearchContacts(ctx, query)
 }
