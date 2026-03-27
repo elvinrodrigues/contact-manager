@@ -104,18 +104,23 @@ export async function createContactForce(
 
 /* -------------------- GET CONTACTS -------------------- */
 
-export async function getContacts(): Promise<Contact[]> {
-  const response = await fetch(`${API_BASE_URL}/contacts`, {
-    method: "GET",
-  });
+export async function getContacts(
+  page = 1,
+  limit = 10,
+): Promise<PaginatedContacts> {
+  const response = await fetch(
+    `${API_BASE_URL}/contacts?page=${page}&limit=${limit}`,
+    {
+      method: "GET",
+    },
+  );
 
   if (!response.ok) {
     throw new Error(`Failed to fetch contacts (${response.status})`);
   }
 
   const data: PaginatedContacts = await response.json();
-
-  return data.contacts || [];
+  return data;
 }
 
 /* -------------------- SEARCH CONTACTS -------------------- */

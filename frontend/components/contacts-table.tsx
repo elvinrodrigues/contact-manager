@@ -31,6 +31,14 @@ import {
   searchContacts,
   deleteContact,
 } from "@/lib/api-service";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 // ─── Skeleton loading rows ────────────────────────────────────────────────
 
@@ -160,11 +168,14 @@ interface ContactsTableProps {
 
 export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
   const [contacts, setContacts] = useState<Contact[]>([]);
+  const [page, setPage] = useState(1);
+  const limit = 10;
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [deletingId, setDeletingId] = useState<number | null>(null);
   const [groupByCategory, setGroupByCategory] = useState(false);
+  const [total, setTotal] = useState(0);
 
   // Delete confirmation state
   const [confirmTarget, setConfirmTarget] = useState<Contact | null>(null);
@@ -178,8 +189,9 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
     setLoading(true);
     setLoadError(null);
     try {
-      const data = await getContacts();
-      setContacts(data);
+      const data = await getContacts(page, limit);
+      setContacts(data.contacts);
+      setTotal(data.total);
     } catch (error) {
       console.error("Error fetching contacts:", error);
       const msg =
@@ -194,6 +206,7 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
   // ── Search (debounced) ────────────────────────────────────────────────────
 
   const handleSearch = (query: string) => {
+    setPage(1);
     setSearchQuery(query);
     if (debounceTimer.current) clearTimeout(debounceTimer.current);
 
@@ -207,7 +220,8 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
       setLoadError(null);
       try {
         const data = await searchContacts(query);
-        setContacts(data);
+        setContacts(data.contacts);
+        setTotal(data.total);
       } catch (error) {
         console.error("Error searching contacts:", error);
         const msg =
@@ -268,7 +282,7 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
   useEffect(() => {
     loadContacts();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refreshTrigger]);
+  }, [refreshTrigger, page]);
 
   // ── Render helpers ────────────────────────────────────────────────────────
 
@@ -399,8 +413,8 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
           {!loading && contacts.length > 0 && (
             <span className="text-xs text-muted-foreground bg-muted border border-border rounded-full px-2.5 py-1 font-medium hidden sm:inline-flex items-center gap-1">
               <Users size={11} />
-              {contacts.length} {isSearch ? "result" : "contact"}
-              {contacts.length !== 1 ? "s" : ""}
+              {total} {isSearch ? "result" : "contact"}
+              {total !== 1 ? "s" : ""}
             </span>
           )}
 
@@ -436,8 +450,8 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
       {/* Mobile count */}
       {!loading && contacts.length > 0 && (
         <p className="text-xs text-muted-foreground mb-3 sm:hidden">
-          {contacts.length} {isSearch ? "result" : "contact"}
-          {contacts.length !== 1 ? "s" : ""}
+          {total} {isSearch ? "result" : "contact"}
+          {total !== 1 ? "s" : ""}
         </p>
       )}
 
@@ -600,6 +614,23 @@ export function ContactsTable({ refreshTrigger }: ContactsTableProps) {
             </Table>
           </div>
         )}
+      <Pagination className="mt-4">
+        <PaginationContent>
+          <PaginationItem>
+            <PaginationPrevious
+              onClick={() => setPage((p) => Math.max(p - 1, 1))}
+            />
+          </PaginationItem>
+
+          <PaginationItem>
+            <span className="px-3 text-sm">Page {page}</span>
+          </PaginationItem>
+
+          <PaginationItem>
+            <PaginationNext onClick={() => setPage((p) => p + 1)} />
+          </PaginationItem>
+        </PaginationContent>
+      </Pagination>
 
       {/* ── Delete confirmation dialog ────────────────────────────────────── */}
       <ConfirmDialog

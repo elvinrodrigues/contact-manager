@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
+import { createPortal } from "react-dom";
 import { useForm, Controller } from "react-hook-form";
 import { Plus, User, Phone, Mail, Tag, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -143,7 +144,7 @@ export function ContactForm({ onContactCreated }: ContactFormProps) {
       name: "",
       phone: "",
       email: "",
-      category_id: undefined,
+      category_id: 1,
     },
   });
 
@@ -204,7 +205,7 @@ export function ContactForm({ onContactCreated }: ContactFormProps) {
         </DialogTrigger>
 
         {/* ── Dialog ───────────────────────────────────────────────────── */}
-        <DialogContent className="p-0 overflow-hidden gap-0 sm:max-w-[460px]">
+        <DialogContent className="p-0 gap-0 sm:max-w-[460px]">
           {/* ── Dialog header ─────────────────────────────────────────── */}
           <div className="px-6 pt-6 pb-5 border-b border-border">
             {/* Accent dot */}
@@ -379,17 +380,71 @@ function CategorySelect({
   onChange,
 }: {
   value?: number;
-  onChange: (v: number | undefined) => void;
+  onChange: (v: number) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = CATEGORIES.find((c) => c.id === value);
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  // Guard against SSR — createPortal needs document.body
+  const [mounted, setMounted] = useState(false);
+  // Effective value — fall back to 1 (Default) when nothing is selected
+  const effectiveValue = value ?? 1;
+  const selected = CATEGORIES.find((c) => c.id === effectiveValue)!;
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+
+  const openMenu = () => {
+    if (!triggerRef.current) return;
+
+    const rect = triggerRef.current.getBoundingClientRect();
+    const GAP = 6;
+    const MENU_MAX_H = 224; // matches max-h-56 below
+    const spaceBelow = window.innerHeight - rect.bottom - GAP;
+    const spaceAbove = rect.top - GAP;
+
+    // Flip upward only when there is not enough room below but enough above
+    const openAbove = spaceBelow < MENU_MAX_H && spaceAbove >= spaceBelow;
+
+    setMenuStyle(
+      openAbove
+        ? {
+            position: "fixed",
+            bottom: window.innerHeight - rect.top + GAP,
+            left: rect.left,
+            width: rect.width,
+            zIndex: 9999,
+          }
+        : {
+            position: "fixed",
+            top: rect.bottom + GAP,
+            left: rect.left,
+            width: rect.width,
+            zIndex: 9999,
+          },
+    );
+
+    setOpen(true);
+  };
 
   return (
     <div className="relative">
-      {/* Trigger */}
+      {/* ── Trigger ─────────────────────────────────────────────────────── */}
       <button
+        ref={triggerRef}
         type="button"
-        onClick={() => setOpen((v) => !v)}
+        onClick={() => (open ? setOpen(false) : openMenu())}
         aria-haspopup="listbox"
         aria-expanded={open}
         className={cn(
@@ -399,20 +454,11 @@ function CategorySelect({
           open && "border-ring ring-2 ring-ring/20",
         )}
       >
-        <span
-          className={cn(
-            "flex-1 truncate text-sm",
-            selected ? "text-foreground" : "text-muted-foreground/60",
-          )}
-        >
-          {selected ? (
-            <span className="flex items-center gap-1.5">
-              <span>{selected.emoji}</span>
-              <span>{selected.name}</span>
-            </span>
-          ) : (
-            "Select a category"
-          )}
+        <span className="flex-1 truncate text-sm text-foreground">
+          <span className="flex items-center gap-1.5">
+            <span>{selected.emoji}</span>
+            <span>{selected.name}</span>
+          </span>
         </span>
         <ChevronDown
           size={13}
@@ -424,85 +470,67 @@ function CategorySelect({
         />
       </button>
 
-      {/* Dropdown */}
-      {open && (
-        <>
-          {/* Click-away overlay */}
-          <div
-            className="fixed inset-0 z-40"
-            onClick={() => setOpen(false)}
-            aria-hidden
-          />
+      {/* ── Dropdown — portalled into document.body so it is never      ── */}
+      {/* ── clipped by DialogContent's overflow:hidden or trapped       ── */}
+      {/* ── inside its CSS-animation transform containing block.        ── */}
+      {mounted &&
+        open &&
+        createPortal(
+          <>
+            {/* Click-away backdrop */}
+            <div
+              className="fixed inset-0"
+              style={{ zIndex: 9998 }}
+              onClick={() => setOpen(false)}
+              aria-hidden
+            />
 
-          <ul
-            role="listbox"
-            className={cn(
-              "absolute z-50 top-[calc(100%+6px)] left-0 w-full",
-              "rounded-xl border border-border bg-popover shadow-lg shadow-black/[0.08]",
-              "py-1 overflow-hidden",
-              "animate-in fade-in-0 zoom-in-95 duration-100",
-            )}
-          >
-            {/* "None" option to clear selection */}
-            <li
-              role="option"
-              aria-selected={value === undefined}
-              onClick={() => {
-                onChange(undefined);
-                setOpen(false);
-              }}
+            <ul
+              role="listbox"
+              style={menuStyle}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 text-sm cursor-default",
-                "text-muted-foreground/70 hover:bg-accent hover:text-accent-foreground",
-                "transition-colors duration-75 select-none",
+                "rounded-xl border border-border bg-popover",
+                "shadow-xl shadow-black/[0.12]",
+                "py-1 max-h-56 overflow-y-auto",
+                "animate-in fade-in-0 zoom-in-95 duration-150 origin-top",
               )}
             >
-              <span className="w-4 flex-shrink-0">
-                {value === undefined && (
-                  <Check size={13} className="text-primary" strokeWidth={2.5} />
-                )}
-              </span>
-              <span className="italic">None</span>
-            </li>
-
-            {/* Separator */}
-            <li className="mx-2 my-1 h-px bg-border" role="separator" />
-
-            {CATEGORIES.map((cat) => {
-              const isSelected = value === cat.id;
-              return (
-                <li
-                  key={cat.id}
-                  role="option"
-                  aria-selected={isSelected}
-                  onClick={() => {
-                    onChange(cat.id);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "flex items-center gap-2.5 px-3 py-2 text-sm cursor-default",
-                    "hover:bg-accent hover:text-accent-foreground",
-                    "transition-colors duration-75 select-none",
-                    isSelected && "text-primary font-medium",
-                  )}
-                >
-                  <span className="w-4 flex-shrink-0">
-                    {isSelected && (
-                      <Check
-                        size={13}
-                        className="text-primary"
-                        strokeWidth={2.5}
-                      />
+              {CATEGORIES.map((cat) => {
+                const isSelected = effectiveValue === cat.id;
+                return (
+                  <li
+                    key={cat.id}
+                    role="option"
+                    aria-selected={isSelected}
+                    onClick={() => {
+                      onChange(cat.id);
+                      setOpen(false);
+                    }}
+                    className={cn(
+                      "flex items-center gap-2.5 px-3 py-2 text-sm cursor-default",
+                      "hover:bg-accent hover:text-accent-foreground",
+                      "transition-colors duration-75 select-none",
+                      isSelected && "text-primary font-medium bg-accent/40",
                     )}
-                  </span>
-                  <span>{cat.emoji}</span>
-                  <span>{cat.name}</span>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+                  >
+                    <span className="w-4 flex-shrink-0">
+                      {isSelected && (
+                        <Check
+                          size={13}
+                          className="text-primary"
+                          strokeWidth={2.5}
+                        />
+                      )}
+                    </span>
+                    <span>{cat.emoji}</span>
+                    <span>{cat.name}</span>
+                  </li>
+                );
+              })}
+            </ul>
+          </>,
+          document.body,
+        )}
     </div>
   );
 }

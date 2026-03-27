@@ -3,13 +3,13 @@ package database
 import (
 	"database/sql"
 	"log"
-	"os"
 
 	_ "github.com/lib/pq"
 )
 
 func ConnectDB() *sql.DB {
-	dbURL := os.Getenv("DATABASE_URL")
+	// dbURL := os.Getenv("DATABASE_URL")
+	dbURL := "host=localhost user=contacts_app dbname=contacts_manager sslmode=disable"
 
 	if dbURL == "" {
 		log.Fatal("DATABASE_URL not set")
