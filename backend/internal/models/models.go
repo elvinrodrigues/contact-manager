@@ -26,3 +26,8 @@ type ListContactsResult struct {
 	Limit    int       `json:"limit"`
 	Total    int       `json:"total"`
 }
+type UpdateContactRequest struct {
+	Name       *string `json:"name"`
+	Email      *string `json:"email"`
+	CategoryID *int    `json:"category_id"`
+}

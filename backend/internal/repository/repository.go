@@ -4,6 +4,9 @@ import (
 	"contact-manager/internal/models"
 	"context"
 	"database/sql"
+	"errors"
+
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 func (r *ContactRepository) InsertContact(contact models.Contact) (int, error) {
@@ -19,6 +22,13 @@ func (r *ContactRepository) InsertContact(contact models.Contact) (int, error) {
 	err := r.DB.QueryRow(query, contact.Name, contact.Phone, contact.Email, contact.CategoryID).Scan(&id)
 
 	if err != nil {
+		var ErrDuplicatePhone = errors.New("duplicate phone")
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) {
+			if pgErr.Code == "23505" {
+				return 0, ErrDuplicatePhone
+			}
+		}
 		return 0, err
 	}
 	return id, nil
@@ -67,7 +77,7 @@ func (r *ContactRepository) ListContacts(limit int, offset int) ([]models.Contac
 		select id,name,phone,email, category_id
 		from contacts
 		where  deleted_at is null
-		order by name
+		order by name,id
 		limit $1 offset $2
 	`
 
@@ -123,7 +133,7 @@ func (r *ContactRepository) ListDeletedContacts(limit int, offset int) ([]models
 		select id,name,phone,email, category_id
 		from contacts
 		where  deleted_at is not null
-		order by deleted_at desc
+		order by deleted_at desc,id
 		limit $1 offset $2
 	`
 
@@ -241,7 +251,7 @@ func (r *ContactRepository) UpdateContactByID(id int, name string, email string,
 		update contacts
 		set name = $2,
 			email = $3,
-			category = $4
+			category_id = $4
 		where id = $1
 		and deleted_at is null
 		`

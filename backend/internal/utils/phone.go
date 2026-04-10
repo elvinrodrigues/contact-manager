@@ -1,9 +1,13 @@
 package utils
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
+
+var ErrInvalidPhone = errors.New("invalid phone number")
+var ErrDuplicatePhone = errors.New("duplicate phone")
 
 func NormalizePhone(phone string) (string, error) {
 	phone = strings.TrimSpace(phone)

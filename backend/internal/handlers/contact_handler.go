@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"strconv"
 
 	"contact-manager/internal/models"
 	"contact-manager/internal/services"
+	"contact-manager/internal/utils"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -35,12 +38,16 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	if req.Name == "" || req.Phone == "" {
-		http.Error(w, "name and phone number are required", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "name and phone number are required")
 		return
+	}
+	var email *string
+	if req.Email != "" {
+		email = &req.Email
 	}
 
 	contact := models.Contact{
@@ -52,17 +59,15 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 
 	result, err := h.Service.CreateContact(contact)
 	if err != nil {
-		if err.Error() == "Invalid Phone Number" {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+		if err == utils.ErrInvalidPhone {
+			utils.WriteError(w, http.StatusBadRequest, err.Error())
 			return
 		}
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(result)
+	utils.WriteJSON(w, http.StatusCreated, result, "Contact created successfully")
 }
 
 func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
@@ -72,18 +77,24 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	pageStr := query.Get("page")
 	limitStr := query.Get("limit")
 
-	page, _ := strconv.Atoi(pageStr)
-	limit, _ := strconv.Atoi(limitStr)
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		page = 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
 
 	result, err := h.Service.ListContacts(page, limit)
 
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(result)
+	utils.WriteJSON(w, http.StatusOK, result, "Contacts fetched successfully")
 }
 func (h *ContactHandler) ListDeletedContacts(w http.ResponseWriter, r *http.Request) {
 
@@ -92,34 +103,47 @@ func (h *ContactHandler) ListDeletedContacts(w http.ResponseWriter, r *http.Requ
 	pageStr := query.Get("page")
 	limitStr := query.Get("limit")
 
-	page, _ := strconv.Atoi(pageStr)
-	limit, _ := strconv.Atoi(limitStr)
+	page, err := strconv.Atoi(pageStr)
+	if err != nil || page <= 0 {
+		page = 1
+	}
+
+	limit, err := strconv.Atoi(limitStr)
+	if err != nil || limit <= 0 {
+		limit = 10
+	}
 
 	result, err := h.Service.ListDeletedContacts(page, limit)
 
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(result)
+	utils.WriteJSON(w, http.StatusOK, result, "Contacts fetched successfully")
 }
 func (h *ContactHandler) GetContactByID(w http.ResponseWriter, r *http.Request) {
 
 	idStr := chi.URLParam(r, "id")
 
-	id, _ := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "invalid contact id")
+		return
+	}
 
 	result, err := h.Service.GetContactByID(id)
 
 	if err != nil {
-		http.Error(w, "Internal server error", http.StatusInternalServerError)
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.WriteError(w, http.StatusNotFound, "contact not found")
+			return
+		}
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	w.Header().Set("Content-Type", "application/json")
 
-	json.NewEncoder(w).Encode(result)
+	utils.WriteJSON(w, http.StatusOK, result, "Contact fetched successfully")
 }
 
 func (h *ContactHandler) DeleteContactByID(w http.ResponseWriter, r *http.Request) {
@@ -128,13 +152,15 @@ func (h *ContactHandler) DeleteContactByID(w http.ResponseWriter, r *http.Reques
 	id, err := strconv.Atoi(idStr)
 
 	if err != nil {
-		http.Error(w, "invalid contact id", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "invalid contact id")
+		return
 	}
 
 	err = h.Service.DeleteContactByID(id)
 
 	if err != nil {
-		http.Error(w, "contact not found", http.StatusNotFound)
+		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		return
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -144,18 +170,17 @@ func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Reque
 	id, err := strconv.Atoi(idStr)
 
 	if err != nil {
-		http.Error(w, "invalid contact id", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "invalid contact id")
+		return
 	}
 
 	err = h.Service.RestoreContactByID(id)
 
 	if err != nil {
-		http.Error(w, "contact not found", http.StatusNotFound)
+		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Contact restored successfully",
-	})
+	utils.WriteJSON(w, http.StatusOK, nil, "Contact restored successfully")
 }
 func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
@@ -163,42 +188,43 @@ func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Reques
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
-		http.Error(w, "invalid request body", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
-		http.Error(w, "invalid contact id", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "invalid contact id")
+		return
 	}
 
 	err = h.Service.UpdateContactByID(id, req)
 
 	if err != nil {
-		http.Error(w, "contact not found", http.StatusNotFound)
+		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		return
 	}
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"message": "Contact restored successfully",
-	})
+	utils.WriteJSON(w, http.StatusOK, nil, "Contact updated successfully")
 }
 func (h *ContactHandler) SearchContacts(w http.ResponseWriter, r *http.Request) {
 
 	query := r.URL.Query().Get("q")
 
 	if query == "" {
-		http.Error(w, "search query is required", http.StatusBadRequest)
+		utils.WriteError(w, http.StatusBadRequest, "search query is required")
 		return
 	}
 
 	contacts, err := h.Service.SearchContacts(r.Context(), query)
 	if err != nil {
 		log.Println("search error:", err)
-		http.Error(w, "failed to search contacts", http.StatusInternalServerError)
+		utils.WriteError(w, http.StatusInternalServerError, "failed to search contacts")
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(models.ListContactsResult{
+	utils.WriteJSON(w, http.StatusOK, models.ListContactsResult{
 		Contacts: contacts,
-	})
+		Page:     0,
+		Limit:    0,
+		Total:    len(contacts),
+	}, "Contacts fetched successfully")
 }
