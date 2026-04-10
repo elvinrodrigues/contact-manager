@@ -159,20 +159,19 @@ func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Reque
 }
 func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	name := chi.URLParam(r, "name")
-	email := chi.URLParam(r, "email")
-	categoryStr := chi.URLParam(r, "category")
+	var req models.UpdateContactRequest
 
+	err := json.NewDecoder(r.Body).Decode(&req)
+	if err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
 		http.Error(w, "invalid contact id", http.StatusBadRequest)
 	}
-	category, err := strconv.Atoi(categoryStr)
-	if err != nil {
-		http.Error(w, "invalid contact category", http.StatusBadRequest)
-	}
 
-	err = h.Service.UpdateContactByID(id, name, email, category)
+	err = h.Service.UpdateContactByID(id, req)
 
 	if err != nil {
 		http.Error(w, "contact not found", http.StatusNotFound)
