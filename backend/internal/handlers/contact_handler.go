@@ -4,9 +4,9 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
-	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"contact-manager/internal/models"
 	"contact-manager/internal/services"
@@ -53,7 +53,7 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 	contact := models.Contact{
 		Name:       req.Name,
 		Phone:      req.Phone,
-		Email:      &req.Email,
+		Email:      email,
 		CategoryID: req.CategoryID,
 	}
 
@@ -90,7 +90,7 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	result, err := h.Service.ListContacts(page, limit)
 
 	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -116,7 +116,7 @@ func (h *ContactHandler) ListDeletedContacts(w http.ResponseWriter, r *http.Requ
 	result, err := h.Service.ListDeletedContacts(page, limit)
 
 	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "Internal server error")
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 
@@ -159,7 +159,11 @@ func (h *ContactHandler) DeleteContactByID(w http.ResponseWriter, r *http.Reques
 	err = h.Service.DeleteContactByID(id)
 
 	if err != nil {
-		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.WriteError(w, http.StatusNotFound, "contact not found")
+			return
+		}
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -177,7 +181,11 @@ func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Reque
 	err = h.Service.RestoreContactByID(id)
 
 	if err != nil {
-		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.WriteError(w, http.StatusNotFound, "contact not found")
+			return
+		}
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	utils.WriteJSON(w, http.StatusOK, nil, "Contact restored successfully")
@@ -200,7 +208,11 @@ func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Reques
 	err = h.Service.UpdateContactByID(id, req)
 
 	if err != nil {
-		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		if errors.Is(err, sql.ErrNoRows) {
+			utils.WriteError(w, http.StatusNotFound, "contact not found")
+			return
+		}
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
 	utils.WriteJSON(w, http.StatusOK, nil, "Contact updated successfully")
@@ -209,14 +221,13 @@ func (h *ContactHandler) SearchContacts(w http.ResponseWriter, r *http.Request) 
 
 	query := r.URL.Query().Get("q")
 
-	if query == "" {
+	if len(strings.TrimSpace(query)) < 2 {
 		utils.WriteError(w, http.StatusBadRequest, "search query is required")
 		return
 	}
 
 	contacts, err := h.Service.SearchContacts(r.Context(), query)
 	if err != nil {
-		log.Println("search error:", err)
 		utils.WriteError(w, http.StatusInternalServerError, "failed to search contacts")
 		return
 	}

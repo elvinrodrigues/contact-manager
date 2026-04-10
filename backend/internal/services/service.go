@@ -18,18 +18,7 @@ func (s *ContactService) CreateContact(contact models.Contact) (models.CreateCon
 	if err != nil {
 		return result, err
 	}
-	duplicates, err := s.Repo.FindContactsByPhone(contact.Phone)
-
-	if err != nil {
-		return result, err
-	}
-	if len(duplicates) > 0 {
-		result.Status = "duplicate"
-		result.Duplicates = duplicates
-		return result, nil
-	}
-	var id int
-	id, err = s.Repo.InsertContact(contact)
+	id, err := s.Repo.InsertContact(contact)
 
 	if err != nil {
 		if err == utils.ErrDuplicatePhone {
@@ -154,14 +143,14 @@ func (s *ContactService) UpdateContactByID(id int, req models.UpdateContactReque
 		name = *req.Name
 	}
 
-	if req.Email != "" {
+	if req.Email != nil {
 		email = req.Email
 	}
 	if req.CategoryID != nil {
 		categoryID = *req.CategoryID
 	}
 
-	err = s.Repo.UpdateContactByID(id, name, *email, categoryID)
+	err = s.Repo.UpdateContactByID(id, name, email, categoryID)
 	if err != nil {
 		return err
 	}

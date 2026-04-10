@@ -246,7 +246,7 @@ func (r *ContactRepository) RestoreContactByID(id int) error {
 	return nil
 
 }
-func (r *ContactRepository) UpdateContactByID(id int, name string, email string, category int) error {
+func (r *ContactRepository) UpdateContactByID(id int, name string, email *string, category int) error {
 	query := `
 		update contacts
 		set name = $2,
