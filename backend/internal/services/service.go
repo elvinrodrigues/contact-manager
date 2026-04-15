@@ -53,7 +53,7 @@ func (s *ContactService) CreateContact(contact models.Contact) (models.CreateCon
 	return result, nil
 }
 
-func (s *ContactService) ListContacts(page int, limit int) (models.ListContactsResult, error) {
+func (s *ContactService) ListContacts(page int, limit int, category string) (models.ListContactsResult, error) {
 	if page <= 0 {
 		page = 1
 	}
@@ -63,12 +63,12 @@ func (s *ContactService) ListContacts(page int, limit int) (models.ListContactsR
 
 	offset := (page - 1) * limit
 
-	contacts, err := s.Repo.ListContacts(limit, offset)
+	contacts, err := s.Repo.ListContacts(limit, offset, category)
 
 	if err != nil {
 		return models.ListContactsResult{}, err
 	}
-	total, err := s.Repo.CountContacts()
+	total, err := s.Repo.CountContacts(category)
 
 	if err != nil {
 		return models.ListContactsResult{}, err
@@ -174,4 +174,28 @@ func (s *ContactService) SearchContacts(ctx context.Context, query string) ([]mo
 	// }
 
 	return s.Repo.SearchContacts(ctx, query)
+}
+
+// Stats
+
+type Stats struct {
+	Total         int                   `json:"total"`
+	Deleted       int                   `json:"deleted"`
+	AddedThisWeek int                   `json:"added_this_week"`
+	Recent        []models.Contact      `json:"recent"`
+	Categories    []models.CategoryStat `json:"categories"`
+}
+
+func (s *ContactService) GetStats() (Stats, error) {
+	total, deleted, added, recent, categories, err := s.Repo.GetStats()
+	if err != nil {
+		return Stats{}, err
+	}
+	return Stats{
+		Total:         total,
+		Deleted:       deleted,
+		AddedThisWeek: added,
+		Recent:        recent,
+		Categories:    categories,
+	}, nil
 }

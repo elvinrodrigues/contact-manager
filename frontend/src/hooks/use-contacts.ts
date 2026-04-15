@@ -3,10 +3,10 @@ import { contactsApi } from "@/services/api";
 import type { ContactFormData } from "@/types/contact";
 import { toast } from "sonner";
 
-export function useContacts(page: number, limit = 10) {
+export function useContacts(page: number, limit = 10, category = "all") {
   return useQuery({
-    queryKey: ["contacts", page, limit],
-    queryFn: () => contactsApi.list(page, limit),
+    queryKey: ["contacts", page, limit, category],
+    queryFn: () => contactsApi.list(page, limit, category),
   });
 }
 
@@ -88,8 +88,15 @@ export function usePermanentDeleteContact() {
     mutationFn: (id: number) => contactsApi.deletePermanent(id),
     onSuccess: () => {
       toast.success("Contact permanently deleted");
-      qc.invalidateQueries({ queryKey: ["contacts", "deleted"] });
+      qc.invalidateQueries({ queryKey: ["contacts"] });
     },
     onError: (err: Error) => toast.error(err.message),
+  });
+}
+
+export function useStats() {
+  return useQuery({
+    queryKey: ["contacts", "stats"],
+    queryFn: () => contactsApi.getStats(),
   });
 }

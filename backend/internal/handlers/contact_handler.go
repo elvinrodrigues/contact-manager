@@ -84,7 +84,9 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	result, err := h.Service.ListContacts(page, limit)
+	category := query.Get("category")
+
+	result, err := h.Service.ListContacts(page, limit, category)
 
 	if err != nil {
 		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
@@ -309,4 +311,13 @@ func (h *ContactHandler) SearchContacts(w http.ResponseWriter, r *http.Request) 
 		Limit:    0,
 		Total:    len(contacts),
 	}, "Contacts fetched successfully")
+}
+
+func (h *ContactHandler) GetStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.Service.GetStats()
+	if err != nil {
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, stats, "")
 }

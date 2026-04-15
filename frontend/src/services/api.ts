@@ -42,11 +42,16 @@ function mapContact(c: any): Contact {
 }
 
 export const contactsApi = {
-  list: (page = 1, limit = 10) =>
-    request<ContactsListResponse>(`/contacts?page=${page}&limit=${limit}`).then((res) => {
+  list: (page = 1, limit = 10, category = "all") => {
+    const params = new URLSearchParams({ page: page.toString(), limit: limit.toString() });
+    if (category && category !== "all") {
+      params.append("category", category);
+    }
+    return request<ContactsListResponse>(`/contacts?${params.toString()}`).then((res) => {
       if (res && res.contacts) res.contacts = res.contacts.map(mapContact);
       return res;
-    }),
+    });
+  },
 
   search: (q: string) =>
     request<ContactsListResponse>(`/contacts/search?q=${encodeURIComponent(q)}`).then((res) => {
@@ -105,4 +110,16 @@ export const contactsApi = {
       method: "DELETE",
     });
   },
+
+  getStats: () =>
+    request<{
+      total: number;
+      deleted: number;
+      added_this_week: number;
+      recent: Contact[];
+      categories: { name: string; count: number }[];
+    }>("/contacts/stats").then((res) => {
+      if (res && res.recent) res.recent = res.recent.map(mapContact);
+      return res;
+    }),
 };

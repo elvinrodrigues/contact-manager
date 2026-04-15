@@ -32,3 +32,8 @@ type UpdateContactRequest struct {
 	Email      string `json:"email"`
 	CategoryID int    `json:"category_id"`
 }
+
+type CategoryStat struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}

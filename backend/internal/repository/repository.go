@@ -117,16 +117,27 @@ func (r *ContactRepository) FindDeletedByPhone(phone string) (*models.Contact, e
 	return &contact, nil
 }
 
-func (r *ContactRepository) ListContacts(limit int, offset int) ([]models.Contact, error) {
+func (r *ContactRepository) ListContacts(limit int, offset int, category string) ([]models.Contact, error) {
 	query := `
-		select id,name,phone,email, category_id
-		from contacts
-		where  deleted_at is null
-		order by name,id
-		limit $1 offset $2
+		select c.id, c.name, c.phone, c.email, c.category_id
+		from contacts c
 	`
+	args := []interface{}{}
+	if category != "" && category != "all" {
+		query += ` join categories cat on c.category_id = cat.id `
+	}
+	query += ` where c.deleted_at is null `
+	if category != "" && category != "all" {
+		query += ` and lower(cat.name) = lower($1) `
+		args = append(args, category)
+		query += ` order by c.name, c.id limit $2 offset $3 `
+		args = append(args, limit, offset)
+	} else {
+		query += ` order by c.name, c.id limit $1 offset $2 `
+		args = append(args, limit, offset)
+	}
 
-	rows, err := r.DB.Query(query, limit, offset)
+	rows, err := r.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -164,14 +175,22 @@ func (r *ContactRepository) ListContacts(limit int, offset int) ([]models.Contac
 	return contacts, nil
 }
 
-func (r *ContactRepository) CountContacts() (int, error) {
+func (r *ContactRepository) CountContacts(category string) (int, error) {
 	query := `
-		select count(*) from contacts
-		where deleted_at is null
+		select count(*) from contacts c
 	`
-	var total int
+	args := []interface{}{}
+	if category != "" && category != "all" {
+		query += ` join categories cat on c.category_id = cat.id `
+	}
+	query += ` where c.deleted_at is null `
+	if category != "" && category != "all" {
+		query += ` and lower(cat.name) = lower($1) `
+		args = append(args, category)
+	}
 
-	err := r.DB.QueryRow(query).Scan(&total)
+	var total int
+	err := r.DB.QueryRow(query, args...).Scan(&total)
 
 	if err != nil {
 		return 0, err
@@ -405,4 +424,87 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, query string) ([
 	}
 
 	return contacts, rows.Err()
+}
+
+func (r *ContactRepository) GetStats() (total int, deleted int, addedThisWeek int, recent []models.Contact, categories []models.CategoryStat, err error) {
+	err = r.DB.QueryRow(`
+		SELECT COUNT(*) FROM contacts WHERE deleted_at IS NULL
+	`).Scan(&total)
+	if err != nil {
+		return
+	}
+
+	err = r.DB.QueryRow(`
+		SELECT COUNT(*) FROM contacts WHERE deleted_at IS NOT NULL
+	`).Scan(&deleted)
+	if err != nil {
+		return
+	}
+
+	err = r.DB.QueryRow(`
+		SELECT COUNT(*)
+		FROM contacts
+		WHERE created_at >= date_trunc('week', now())
+		AND deleted_at IS NULL
+	`).Scan(&addedThisWeek)
+	if err != nil {
+		return
+	}
+
+	rows, err := r.DB.Query(`
+		SELECT id, name, category_id
+		FROM contacts
+		WHERE deleted_at IS NULL
+		ORDER BY created_at DESC
+		LIMIT 5
+	`)
+	if err != nil {
+		return
+	}
+	defer rows.Close()
+
+	if recent == nil {
+		recent = make([]models.Contact, 0)
+	}
+
+	for rows.Next() {
+		var c models.Contact
+		if errScan := rows.Scan(&c.ID, &c.Name, &c.CategoryID); errScan != nil {
+			err = errScan
+			return
+		}
+		recent = append(recent, c)
+	}
+
+	if err = rows.Err(); err != nil {
+		return
+	}
+
+	catRows, err := r.DB.Query(`
+		SELECT cat.name, COUNT(*) as count
+		FROM contacts c
+		JOIN categories cat ON c.category_id = cat.id
+		WHERE c.deleted_at IS NULL
+		GROUP BY cat.name;
+	`)
+	if err != nil {
+		return
+	}
+	defer catRows.Close()
+
+	if categories == nil {
+		categories = make([]models.CategoryStat, 0)
+	}
+
+	for catRows.Next() {
+		var cs models.CategoryStat
+		if errScan := catRows.Scan(&cs.Name, &cs.Count); errScan != nil {
+			err = errScan
+			return
+		}
+		categories = append(categories, cs)
+	}
+
+	err = catRows.Err()
+	return
 }

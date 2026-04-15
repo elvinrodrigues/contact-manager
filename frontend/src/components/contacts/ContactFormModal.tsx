@@ -18,6 +18,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Loader2 } from "lucide-react";
 import type { Contact, ContactFormData } from "@/types/contact";
 import { useEffect } from "react";
 import { CATEGORIES, DEFAULT_CATEGORY_ID } from "@/constants/categories";
@@ -90,20 +91,18 @@ export function ContactFormModal({
         changed.email = data.email ?? "";
       if (data.categoryId !== contact.categoryId)
         changed.categoryId = data.categoryId;
-      console.log("SUBMIT DATA:", changed);
       onSubmit(changed as ContactFormData);
     } else {
       if (data.email === "") {
         data.email = undefined;
       }
-      console.log("SUBMIT DATA:", data);
       onSubmit(data);
     }
   };
 
   return (
     <Dialog open={open} onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="rounded-2xl sm:max-w-md">
         <DialogHeader>
           <DialogTitle>{contact ? "Edit Contact" : "New Contact"}</DialogTitle>
         </DialogHeader>
@@ -117,9 +116,11 @@ export function ContactFormModal({
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Name</FormLabel>
+                  <FormLabel>
+                    Name <span className="text-destructive">*</span>
+                  </FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} className="rounded-xl" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -130,9 +131,11 @@ export function ContactFormModal({
               name="phone"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Phone</FormLabel>
+                  <FormLabel>
+                    Phone <span className="text-destructive">*</span>
+                  </FormLabel>
                   <FormControl>
-                    <Input {...field} disabled={!!contact} />
+                    <Input {...field} disabled={!!contact} className="rounded-xl" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -143,9 +146,9 @@ export function ContactFormModal({
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Email (optional)</FormLabel>
+                  <FormLabel>Email</FormLabel>
                   <FormControl>
-                    <Input {...field} />
+                    <Input {...field} className="rounded-xl" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -171,7 +174,7 @@ export function ContactFormModal({
                           />
                           <label
                             htmlFor={`cat-${cat.id}`}
-                            className="text-sm cursor-pointer"
+                            className="cursor-pointer text-sm"
                           >
                             {cat.name}
                           </label>
@@ -183,12 +186,30 @@ export function ContactFormModal({
                 </FormItem>
               )}
             />
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="outline" onClick={onClose}>
+            <div className="flex gap-2 pt-2">
+              <Button
+                type="button"
+                variant="ghost"
+                onClick={onClose}
+                className="flex-1 rounded-xl"
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={isSubmitting}>
-                {isSubmitting ? "Saving..." : contact ? "Update" : "Create"}
+              <Button
+                type="submit"
+                disabled={isSubmitting}
+                className="flex-1 rounded-xl"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Saving…
+                  </>
+                ) : contact ? (
+                  "Update"
+                ) : (
+                  "Save Contact"
+                )}
               </Button>
             </div>
           </form>
