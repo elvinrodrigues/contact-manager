@@ -99,4 +99,10 @@ export const contactsApi = {
     if (res && res.contacts) res.contacts = res.contacts.map(mapContact);
     return res;
   }),
+
+  deletePermanent: async (id: number): Promise<void> => {
+    await request<void>(`/contacts/${id}/permanent`, {
+      method: "DELETE",
+    });
+  },
 };

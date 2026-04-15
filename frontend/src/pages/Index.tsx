@@ -15,6 +15,7 @@ import {
   useUpdateContact,
   useDeleteContact,
   useRestoreContact,
+  usePermanentDeleteContact,
 } from "@/hooks/use-contacts";
 import type { Contact, ContactFormData } from "@/types/contact";
 import { CATEGORIES } from "@/constants/categories";
@@ -41,6 +42,12 @@ export default function Index() {
   const updateMutation = useUpdateContact();
   const deleteMutation = useDeleteContact();
   const restoreMutation = useRestoreContact();
+  const permanentDeleteMutation = usePermanentDeleteContact();
+
+  const handlePermanentDelete = (id: number) => {
+    if (!confirm("Delete permanently? This cannot be undone.")) return;
+    permanentDeleteMutation.mutate(id);
+  };
 
   const handleSearch = useCallback((q: string) => setSearchQuery(q), []);
 
@@ -195,6 +202,7 @@ export default function Index() {
                   isLoading={deletedQuery.isLoading}
                   isDeleted
                   onRestore={(id) => restoreMutation.mutate(id)}
+                  onPermanentDelete={handlePermanentDelete}
                 />
                 {deletedQuery.data && (
                   <PaginationControls

@@ -81,3 +81,15 @@ export function useRestoreContact() {
     onError: (err: Error) => toast.error(err.message),
   });
 }
+
+export function usePermanentDeleteContact() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: number) => contactsApi.deletePermanent(id),
+    onSuccess: () => {
+      toast.success("Contact permanently deleted");
+      qc.invalidateQueries({ queryKey: ["contacts", "deleted"] });
+    },
+    onError: (err: Error) => toast.error(err.message),
+  });
+}

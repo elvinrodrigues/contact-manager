@@ -24,6 +24,7 @@ interface ContactsTableProps {
   onEdit?: (contact: Contact) => void;
   onDelete?: (id: number) => void;
   onRestore?: (id: number) => void;
+  onPermanentDelete?: (id: number) => void;
 }
 
 export function ContactsTable({
@@ -33,6 +34,7 @@ export function ContactsTable({
   onEdit,
   onDelete,
   onRestore,
+  onPermanentDelete,
 }: ContactsTableProps) {
   if (isLoading) {
     return (
@@ -77,13 +79,22 @@ export function ContactsTable({
               </TableCell>
               <TableCell className="text-right">
                 {isDeleted ? (
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => onRestore?.(c.id)}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </Button>
+                  <div className="flex justify-end gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onRestore?.(c.id)}
+                    >
+                      <RotateCcw className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onPermanentDelete?.(c.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
                 ) : (
                   <div className="flex justify-end gap-1">
                     <Button

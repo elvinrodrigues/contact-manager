@@ -90,10 +90,13 @@ export function ContactFormModal({
         changed.email = data.email ?? "";
       if (data.categoryId !== contact.categoryId)
         changed.categoryId = data.categoryId;
-      console.log("UPDATE PAYLOAD:", changed);
+      console.log("SUBMIT DATA:", changed);
       onSubmit(changed as ContactFormData);
     } else {
-      if (!data.email) delete data.email;
+      if (data.email === "") {
+        data.email = undefined;
+      }
+      console.log("SUBMIT DATA:", data);
       onSubmit(data);
     }
   };
