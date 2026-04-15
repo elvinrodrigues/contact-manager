@@ -8,7 +8,7 @@ type Contact struct {
 	ID         int        `json:"id"`
 	Name       string     `json:"name"`
 	Phone      string     `json:"phone"`
-	Email      *string    `json:"email,omitempty"`
+	Email      string     `json:"email,omitempty"`
 	CategoryID int        `json:"category_id"`
 	CreatedAt  time.Time  `json:"created_at"`
 	UpdatedAt  time.Time  `json:"updated_at"`
@@ -16,9 +16,10 @@ type Contact struct {
 }
 
 type CreateContactResult struct {
-	Status     string    `json:"status"`
-	Contact    *Contact  `json:"contact,omitempty"`
-	Duplicates []Contact `json:"duplicates,omitempty"`
+	Status     string     `json:"status"`
+	Contact    *Contact   `json:"contact,omitempty"`
+	Duplicates []Contact  `json:"duplicates,omitempty"`
+	Incoming   *Contact   `json:"incoming,omitempty"`
 }
 type ListContactsResult struct {
 	Contacts []Contact `json:"contacts"`
@@ -27,7 +28,7 @@ type ListContactsResult struct {
 	Total    int       `json:"total"`
 }
 type UpdateContactRequest struct {
-	Name       *string `json:"name"`
-	Email      *string `json:"email"`
-	CategoryID *int    `json:"category_id"`
+	Name       string `json:"name"`
+	Email      string `json:"email"`
+	CategoryID int    `json:"category_id"`
 }

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"contact-manager/internal/utils"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/lib/pq"
 )
 
 type ContactHandler struct {
@@ -45,15 +47,10 @@ func (h *ContactHandler) CreateContact(w http.ResponseWriter, r *http.Request) {
 		utils.WriteError(w, http.StatusBadRequest, "name and phone number are required")
 		return
 	}
-	var email *string
-	if req.Email != "" {
-		email = &req.Email
-	}
-
 	contact := models.Contact{
 		Name:       req.Name,
 		Phone:      req.Phone,
-		Email:      email,
+		Email:      req.Email,
 		CategoryID: req.CategoryID,
 	}
 
@@ -97,7 +94,6 @@ func (h *ContactHandler) ListContacts(w http.ResponseWriter, r *http.Request) {
 	utils.WriteJSON(w, http.StatusOK, result, "Contacts fetched successfully")
 }
 func (h *ContactHandler) ListDeletedContacts(w http.ResponseWriter, r *http.Request) {
-
 	query := r.URL.Query()
 
 	pageStr := query.Get("page")
@@ -166,8 +162,36 @@ func (h *ContactHandler) DeleteContactByID(w http.ResponseWriter, r *http.Reques
 		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	w.WriteHeader(http.StatusNoContent)
+	utils.WriteJSON(w, http.StatusOK, nil, "contact deleted")
 }
+
+func (h *ContactHandler) PermanentDeleteContactByID(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+
+	id, err := strconv.Atoi(idStr)
+
+	if err != nil {
+		utils.WriteError(w, http.StatusBadRequest, "invalid contact id")
+		return
+	}
+
+	err = h.Service.PermanentDeleteContactByID(id)
+
+	if err != nil {
+		if errors.Is(err, services.ErrNotFound) {
+			utils.WriteError(w, http.StatusNotFound, "contact not found")
+			return
+		}
+		if errors.Is(err, services.ErrNotDeleted) {
+			utils.WriteError(w, http.StatusBadRequest, "contact not deleted")
+			return
+		}
+		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, nil, "contact permanently deleted")
+}
+
 func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 
@@ -192,7 +216,11 @@ func (h *ContactHandler) RestoreContactByID(w http.ResponseWriter, r *http.Reque
 }
 func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
-	var req models.UpdateContactRequest
+	var req struct {
+		Name       *string `json:"name"`
+		Email      *string `json:"email"`
+		CategoryID *int    `json:"category_id"`
+	}
 
 	err := json.NewDecoder(r.Body).Decode(&req)
 	if err != nil {
@@ -205,13 +233,56 @@ func (h *ContactHandler) UpdateContactByID(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	err = h.Service.UpdateContactByID(id, req)
+	existing, err := h.Service.GetContactByID(id)
+	if err != nil {
+		utils.WriteError(w, http.StatusNotFound, "contact not found")
+		return
+	}
+
+	// Name: nil → keep existing, non-nil → use value
+	name := existing.Name
+	if req.Name != nil {
+		name = *req.Name
+	}
+
+	// Email: nil → keep existing, "" → clear (NULL), "value" → set
+	var emailPtr *string
+	if req.Email == nil {
+		// not sent — keep existing
+		emailPtr = &existing.Email
+	} else if *req.Email == "" {
+		// sent as "" — clear to NULL
+		emailPtr = nil
+	} else {
+		// sent with value — set it
+		emailPtr = req.Email
+	}
+
+	// CategoryID: nil → keep existing, non-nil → use value
+	categoryID := existing.CategoryID
+	if req.CategoryID != nil {
+		categoryID = *req.CategoryID
+	}
+
+	err = h.Service.UpdateContactByID(id, name, emailPtr, categoryID)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			utils.WriteError(w, http.StatusNotFound, "contact not found")
-			return
+		log.Printf("RAW ERROR: %T %+v\n", err, err)
+
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) {
+			log.Println("Matched pq error with code:", pqErr.Code)
+
+			// foreign key violation (invalid category)
+			if pqErr.Code == "23503" {
+				utils.WriteError(w, http.StatusBadRequest, "invalid category")
+				return
+			}
+		} else {
+			log.Println("NOT a pq.Error")
 		}
+
+		// fallback
 		utils.WriteError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}

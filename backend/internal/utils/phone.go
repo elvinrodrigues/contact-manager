@@ -2,7 +2,6 @@ package utils
 
 import (
 	"errors"
-	"fmt"
 	"strings"
 )
 
@@ -21,7 +20,7 @@ func NormalizePhone(phone string) (string, error) {
 		phone = phone[1:]
 	}
 	if len(phone) != 10 {
-		return "", fmt.Errorf("Invalid Phone Number")
+		return "", ErrInvalidPhone
 	}
 	return phone, nil
 }

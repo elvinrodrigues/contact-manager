@@ -9,6 +9,11 @@ import (
 	"strings"
 )
 
+var (
+	ErrNotFound   = errors.New("not found")
+	ErrNotDeleted = errors.New("not deleted")
+)
+
 // Function for creating contacts
 
 func (s *ContactService) CreateContact(contact models.Contact) (models.CreateContactResult, error) {
@@ -18,20 +23,28 @@ func (s *ContactService) CreateContact(contact models.Contact) (models.CreateCon
 	if err != nil {
 		return result, err
 	}
-	id, err := s.Repo.InsertContact(contact)
-
+	active, err := s.Repo.FindContactsByPhone(contact.Phone)
 	if err != nil {
-		if err == utils.ErrDuplicatePhone {
-			duplicates, err := s.Repo.FindContactsByPhone(contact.Phone)
-			if err != nil {
-				return result, err
-			}
+		return result, err
+	}
 
-			result.Status = "duplicate"
-			result.Duplicates = duplicates
-			return result, nil
-		}
+	if len(active) > 0 {
+		result.Status = "duplicate"
+		result.Duplicates = active
+		result.Incoming = &contact
+		return result, nil
+	}
 
+	deleted, _ := s.Repo.FindDeletedByPhone(contact.Phone)
+	if deleted != nil {
+		result.Status = "deleted_duplicate"
+		result.Duplicates = []models.Contact{*deleted}
+		result.Incoming = &contact
+		return result, nil
+	}
+	var id int
+	id, err = s.Repo.InsertContact(contact)
+	if err != nil {
 		return result, err
 	}
 	contact.ID = id
@@ -103,9 +116,6 @@ func (s *ContactService) GetContactByID(id int) (*models.Contact, error) {
 	contact, err := s.Repo.GetContactByID(id)
 
 	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			return nil, sql.ErrNoRows
-		}
 		return &models.Contact{}, err
 	}
 	return contact, nil
@@ -120,6 +130,30 @@ func (s *ContactService) DeleteContactByID(id int) error {
 	}
 	return nil
 }
+
+func (s *ContactService) PermanentDeleteContactByID(id int) error {
+	rowsAffected, err := s.Repo.PermanentDeleteContactByID(id)
+	if err != nil {
+		return err
+	}
+
+	if rowsAffected == 0 {
+		deletedAt, err := s.Repo.GetDeletedAtByID(id)
+		if err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				return ErrNotFound
+			}
+			return err
+		}
+
+		if deletedAt == nil {
+			return ErrNotDeleted
+		}
+	}
+
+	return nil
+}
+
 func (s *ContactService) RestoreContactByID(id int) error {
 	err := s.Repo.RestoreContactByID(id)
 
@@ -128,36 +162,16 @@ func (s *ContactService) RestoreContactByID(id int) error {
 	}
 	return nil
 }
-func (s *ContactService) UpdateContactByID(id int, req models.UpdateContactRequest) error {
-	existing, err := s.Repo.GetContactByID(id)
-
-	if err != nil {
-		return err
-	}
-
-	name := existing.Name
-	email := existing.Email
-	categoryID := existing.CategoryID
-
-	if req.Name != nil {
-		name = *req.Name
-	}
-
-	if req.Email != nil {
-		email = req.Email
-	}
-	if req.CategoryID != nil {
-		categoryID = *req.CategoryID
-	}
-
-	err = s.Repo.UpdateContactByID(id, name, email, categoryID)
-	if err != nil {
-		return err
-	}
-	return nil
+func (s *ContactService) UpdateContactByID(id int, name string, email *string, category int) error {
+	return s.Repo.UpdateContactByID(id, name, email, category)
 }
+
 func (s *ContactService) SearchContacts(ctx context.Context, query string) ([]models.Contact, error) {
 	query = strings.TrimSpace(query)
+
+	// if len(query) < 2 {
+	// 	return nil, errors.New("query too short")
+	// }
 
 	return s.Repo.SearchContacts(ctx, query)
 }

@@ -2,11 +2,14 @@ package repository
 
 import (
 	"contact-manager/internal/models"
+	"contact-manager/internal/utils"
 	"context"
 	"database/sql"
 	"errors"
+	"fmt"
+	"time"
 
-	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/lib/pq"
 )
 
 func (r *ContactRepository) InsertContact(contact models.Contact) (int, error) {
@@ -20,13 +23,16 @@ func (r *ContactRepository) InsertContact(contact models.Contact) (int, error) {
 		contact.CategoryID = 1
 	}
 	err := r.DB.QueryRow(query, contact.Name, contact.Phone, contact.Email, contact.CategoryID).Scan(&id)
-
+	fmt.Printf("RAW ERROR: %+v\n", err)
+	var pqErr *pq.Error
+	if errors.As(err, &pqErr) {
+		fmt.Println("PQ ERROR CODE:", pqErr.Code)
+	}
 	if err != nil {
-		var ErrDuplicatePhone = errors.New("duplicate phone")
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) {
-			if pgErr.Code == "23505" {
-				return 0, ErrDuplicatePhone
+		var pqErr *pq.Error
+		if errors.As(err, &pqErr) {
+			if pqErr.Code == "23505" {
+				return 0, utils.ErrDuplicatePhone
 			}
 		}
 		return 0, err
@@ -36,7 +42,7 @@ func (r *ContactRepository) InsertContact(contact models.Contact) (int, error) {
 
 func (r *ContactRepository) FindContactsByPhone(phone string) ([]models.Contact, error) {
 	query := `
-		select id,name,email,category_id
+		select id,name,phone,email,category_id,deleted_at
 		from contacts
 		where phone=$1
 		and deleted_at is null
@@ -52,15 +58,21 @@ func (r *ContactRepository) FindContactsByPhone(phone string) ([]models.Contact,
 	defer rows.Close()
 	for rows.Next() {
 		var contact models.Contact
+		var email sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.Name,
-			&contact.Email,
+			&contact.Phone,
+			&email,
 			&contact.CategoryID,
+			&contact.DeletedAt,
 		)
 		if err != nil {
 			return nil, err
+		}
+		if email.Valid {
+			contact.Email = email.String
 		}
 		contacts = append(contacts, contact)
 	}
@@ -70,6 +82,39 @@ func (r *ContactRepository) FindContactsByPhone(phone string) ([]models.Contact,
 	}
 
 	return contacts, nil
+}
+
+func (r *ContactRepository) FindDeletedByPhone(phone string) (*models.Contact, error) {
+	query := `
+		select id,name,phone,email,category_id,deleted_at
+		from contacts
+		where phone=$1
+		and deleted_at is not null
+		limit 1
+	`
+	var contact models.Contact
+	var email sql.NullString
+	err := r.DB.QueryRow(query, phone).Scan(
+		&contact.ID,
+		&contact.Name,
+		&contact.Phone,
+		&email,
+		&contact.CategoryID,
+		&contact.DeletedAt,
+	)
+
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	if email.Valid {
+		contact.Email = email.String
+	}
+
+	return &contact, nil
 }
 
 func (r *ContactRepository) ListContacts(limit int, offset int) ([]models.Contact, error) {
@@ -93,17 +138,22 @@ func (r *ContactRepository) ListContacts(limit int, offset int) ([]models.Contac
 	for rows.Next() {
 
 		var contact models.Contact
+		var email sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.Name,
 			&contact.Phone,
-			&contact.Email,
+			&email,
 			&contact.CategoryID,
 		)
 
 		if err != nil {
 			return nil, err
+		}
+
+		if email.Valid {
+			contact.Email = email.String
 		}
 		contacts = append(contacts, contact)
 	}
@@ -149,17 +199,22 @@ func (r *ContactRepository) ListDeletedContacts(limit int, offset int) ([]models
 	for rows.Next() {
 
 		var contact models.Contact
+		var email sql.NullString
 
 		err := rows.Scan(
 			&contact.ID,
 			&contact.Name,
 			&contact.Phone,
-			&contact.Email,
+			&email,
 			&contact.CategoryID,
 		)
 
 		if err != nil {
 			return nil, err
+		}
+
+		if email.Valid {
+			contact.Email = email.String
 		}
 		contacts = append(contacts, contact)
 	}
@@ -193,11 +248,15 @@ func (r *ContactRepository) GetContactByID(id int) (*models.Contact, error) {
 		and deleted_at is null
 	`
 	var contact models.Contact
+	var email sql.NullString
 
-	err := r.DB.QueryRow(query, id).Scan(&contact.ID, &contact.Name, &contact.Phone, &contact.Email, &contact.CategoryID)
+	err := r.DB.QueryRow(query, id).Scan(&contact.ID, &contact.Name, &contact.Phone, &email, &contact.CategoryID)
 
 	if err != nil {
 		return nil, err
+	}
+	if email.Valid {
+		contact.Email = email.String
 	}
 	return &contact, nil
 }
@@ -205,15 +264,16 @@ func (r *ContactRepository) GetContactByID(id int) (*models.Contact, error) {
 func (r *ContactRepository) DeleteContactByID(id int) error {
 	query := `
 		update contacts
-		set deleted_at = now()
+		set deleted_at = now(),
+		    purge_at = now() + interval '30 days'
 		where id = $1
 		and deleted_at is null
 		`
-	restult, err := r.DB.Exec(query, id)
+	result, err := r.DB.Exec(query, id)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := restult.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -227,15 +287,16 @@ func (r *ContactRepository) DeleteContactByID(id int) error {
 func (r *ContactRepository) RestoreContactByID(id int) error {
 	query := `
 		update contacts
-		set deleted_at = null
+		set deleted_at = null,
+		    purge_at = null
 		where id = $1
 		and deleted_at is not null
 		`
-	restult, err := r.DB.Exec(query, id)
+	result, err := r.DB.Exec(query, id)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := restult.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -246,20 +307,54 @@ func (r *ContactRepository) RestoreContactByID(id int) error {
 	return nil
 
 }
+
+func (r *ContactRepository) PermanentDeleteContactByID(id int) (int64, error) {
+	query := `
+		DELETE FROM contacts
+		WHERE id = $1
+		AND deleted_at IS NOT NULL;
+		`
+	result, err := r.DB.Exec(query, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected()
+}
+
+func (r *ContactRepository) GetDeletedAtByID(id int) (*time.Time, error) {
+	query := `SELECT deleted_at FROM contacts WHERE id = $1`
+
+	var deletedAt sql.NullTime
+
+	err := r.DB.QueryRow(query, id).Scan(&deletedAt)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return nil, err
+		}
+		return nil, err
+	}
+
+	if !deletedAt.Valid {
+		return nil, nil
+	}
+
+	return &deletedAt.Time, nil
+}
 func (r *ContactRepository) UpdateContactByID(id int, name string, email *string, category int) error {
 	query := `
-		update contacts
-		set name = $2,
-			email = $3,
-			category_id = $4
-		where id = $1
-		and deleted_at is null
+		UPDATE contacts
+		SET name = $1,
+		    email = $2,
+		    category_id = $3,
+		    updated_at = now()
+		WHERE id = $4
+		AND deleted_at IS NULL
 		`
-	restult, err := r.DB.Exec(query, id, name, email, category)
+	result, err := r.DB.Exec(query, name, email, category, id)
 	if err != nil {
 		return err
 	}
-	rowsAffected, err := restult.RowsAffected()
+	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return err
 	}
@@ -290,18 +385,22 @@ func (r *ContactRepository) SearchContacts(ctx context.Context, query string) ([
 
 	for rows.Next() {
 		var c models.Contact
+		var email sql.NullString
 
 		err := rows.Scan(
 			&c.ID,
 			&c.Name,
 			&c.Phone,
-			&c.Email,
+			&email,
 			&c.CategoryID,
 		)
 		if err != nil {
 			return nil, err
 		}
 
+		if email.Valid {
+			c.Email = email.String
+		}
 		contacts = append(contacts, c)
 	}
 

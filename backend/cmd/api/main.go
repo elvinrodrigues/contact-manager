@@ -8,13 +8,37 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"time"
+
+	"database/sql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
 
+func StartCleanupJob(db *sql.DB) {
+	ticker := time.NewTicker(1 * time.Hour)
+
+	go func() {
+		defer ticker.Stop()
+		for range ticker.C {
+			_, err := db.Exec(`
+				DELETE FROM contacts
+				WHERE deleted_at IS NOT NULL
+				AND purge_at <= NOW()
+			`)
+			if err != nil {
+				log.Println("cleanup error:", err)
+			} else {
+				log.Println("cleanup job executed")
+			}
+		}
+	}()
+}
+
 func main() {
 	db := database.ConnectDB()
+	StartCleanupJob(db)
 
 	repo := repository.NewContactRepository(db)
 
@@ -38,6 +62,7 @@ func main() {
 	router.Get("/contacts/deleted", handler.ListDeletedContacts)
 	router.Patch("/contacts/{id}/restore", handler.RestoreContactByID)
 	router.Put("/contacts/{id}", handler.UpdateContactByID)
+	router.Delete("/contacts/{id}/permanent", handler.PermanentDeleteContactByID)
 
 	log.Println("Server running on :8080")
 
@@ -45,5 +70,8 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
-	http.ListenAndServe(":"+port, router)
+	err := http.ListenAndServe(":"+port, router)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
