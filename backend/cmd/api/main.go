@@ -5,40 +5,25 @@ import (
 	"contact-manager/internal/handlers"
 	"contact-manager/internal/repository"
 	"contact-manager/internal/services"
+	"contact-manager/internal/worker"
+	"context"
 	"log"
 	"net/http"
 	"os"
-	"time"
-
-	"database/sql"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/cors"
 )
 
-func StartCleanupJob(db *sql.DB) {
-	ticker := time.NewTicker(1 * time.Hour)
 
-	go func() {
-		defer ticker.Stop()
-		for range ticker.C {
-			_, err := db.Exec(`
-				DELETE FROM contacts
-				WHERE deleted_at IS NOT NULL
-				AND purge_at <= NOW()
-			`)
-			if err != nil {
-				log.Println("cleanup error:", err)
-			} else {
-				log.Println("cleanup job executed")
-			}
-		}
-	}()
-}
 
 func main() {
 	db := database.ConnectDB()
-	StartCleanupJob(db)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel() // Ensures cleanup on shutdown
+
+	worker.StartCleanupWorker(ctx, db)
 
 	repo := repository.NewContactRepository(db)
 

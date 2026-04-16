@@ -7,6 +7,7 @@ export interface Contact {
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string;
+  daysRemaining?: number;
 }
 
 export interface ContactFormData {

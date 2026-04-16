@@ -162,7 +162,7 @@ export default function Index() {
                 <SelectContent>
                   <SelectItem value="all">All</SelectItem>
                   {CATEGORIES.map((cat) => (
-                    <SelectItem key={cat.id} value={cat.name}>
+                    <SelectItem key={cat.id} value={String(cat.id)}>
                       {cat.name}
                     </SelectItem>
                   ))}

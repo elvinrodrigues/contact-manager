@@ -106,11 +106,25 @@ const ContactRow = React.memo(function ContactRow({
 
       {/* Name + Phone */}
       <TableCell className="py-3">
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-0.5">
           <span className="text-sm font-medium">{contact.name}</span>
           <span className="text-xs text-muted-foreground">
             {contact.phone || "No phone"}
           </span>
+          {isDeleted && contact.daysRemaining !== undefined && (
+            <span className={cn(
+              "text-[10px] font-medium leading-none max-w-max rounded-sm px-1.5 py-0.5 mt-0.5",
+              contact.daysRemaining === 0 
+                ? "bg-destructive/10 text-destructive" 
+                : "bg-warning-muted text-warning"
+            )}>
+              {contact.daysRemaining === 0 
+                ? "Deleting today" 
+                : contact.daysRemaining === 1 
+                  ? "1 day left" 
+                  : `${contact.daysRemaining} days left`}
+            </span>
+          )}
         </div>
       </TableCell>
 

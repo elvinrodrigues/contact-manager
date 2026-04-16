@@ -121,14 +121,11 @@ func (r *ContactRepository) ListContacts(limit int, offset int, category string)
 	query := `
 		select c.id, c.name, c.phone, c.email, c.category_id
 		from contacts c
+		where c.deleted_at is null
 	`
 	args := []interface{}{}
 	if category != "" && category != "all" {
-		query += ` join categories cat on c.category_id = cat.id `
-	}
-	query += ` where c.deleted_at is null `
-	if category != "" && category != "all" {
-		query += ` and lower(cat.name) = lower($1) `
+		query += ` and c.category_id = $1 `
 		args = append(args, category)
 		query += ` order by c.name, c.id limit $2 offset $3 `
 		args = append(args, limit, offset)
@@ -178,14 +175,11 @@ func (r *ContactRepository) ListContacts(limit int, offset int, category string)
 func (r *ContactRepository) CountContacts(category string) (int, error) {
 	query := `
 		select count(*) from contacts c
+		where c.deleted_at is null
 	`
 	args := []interface{}{}
 	if category != "" && category != "all" {
-		query += ` join categories cat on c.category_id = cat.id `
-	}
-	query += ` where c.deleted_at is null `
-	if category != "" && category != "all" {
-		query += ` and lower(cat.name) = lower($1) `
+		query += ` and c.category_id = $1 `
 		args = append(args, category)
 	}
 
@@ -199,7 +193,8 @@ func (r *ContactRepository) CountContacts(category string) (int, error) {
 }
 func (r *ContactRepository) ListDeletedContacts(limit int, offset int) ([]models.Contact, error) {
 	query := `
-		select id,name,phone,email, category_id
+		select id,name,phone,email, category_id,
+		GREATEST(30 - (current_date - deleted_at::date), 0) as days_remaining
 		from contacts
 		where  deleted_at is not null
 		order by deleted_at desc,id
@@ -226,6 +221,7 @@ func (r *ContactRepository) ListDeletedContacts(limit int, offset int) ([]models
 			&contact.Phone,
 			&email,
 			&contact.CategoryID,
+			&contact.DaysRemaining,
 		)
 
 		if err != nil {
