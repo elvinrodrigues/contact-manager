@@ -5,12 +5,29 @@ import type {
   ContactsListResponse,
   CreateContactResponse,
 } from "@/types/contact";
+import { getToken, removeToken } from "@/lib/token";
 
 async function request<T>(url: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+
+  const token = getToken();
+  if (token) {
+    headers["Authorization"] = `Bearer ${token}`;
+  }
+
   const res = await fetch(`/api${url}`, {
-    headers: { "Content-Type": "application/json" },
+    headers,
     ...options,
   });
+
+  // Global 401 handler — clear token and redirect to login
+  if (res.status === 401) {
+    removeToken();
+    window.location.href = "/login";
+    throw new Error("Session expired");
+  }
 
   let json: any;
 
@@ -30,6 +47,65 @@ async function request<T>(url: string, options?: RequestInit): Promise<T> {
 
   return json.data;
 }
+
+// ── Auth API (public — no token needed) ──────────────────────────────────────
+
+export const authApi = {
+  signup: async (data: { name: string; email: string; password: string }) => {
+    const res = await fetch("/api/auth/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Signup failed");
+    return json;
+  },
+
+  login: async (data: { email: string; password: string }) => {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Login failed");
+    return json;
+  },
+
+  verifyEmail: async (token: string) => {
+    const res = await fetch(`/api/auth/verify?token=${encodeURIComponent(token)}`, {
+      method: "GET",
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Verification failed");
+    return json;
+  },
+
+  forgotPassword: async (email: string) => {
+    const res = await fetch("/api/auth/forgot-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Failed to process request");
+    return json;
+  },
+
+  resetPassword: async (token: string, new_password: string) => {
+    const res = await fetch("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, new_password }),
+    });
+    const json = await res.json();
+    if (!res.ok) throw new Error(json?.error || "Password reset failed");
+    return json;
+  },
+
+  me: () => request<{ id: number; name: string; email: string; role: string }>("/auth/me"),
+};
 
 function mapContact(c: any): Contact {
   if (!c) return c;
@@ -100,7 +176,6 @@ export const contactsApi = {
   },
 
   listDeleted: (page = 1, limit = 10) => request<ContactsListResponse>(`/contacts/deleted?page=${page}&limit=${limit}`).then((res) => {
-    console.log("deleted contacts response", res);
     if (res && res.contacts) res.contacts = res.contacts.map(mapContact);
     return res;
   }),
@@ -122,4 +197,25 @@ export const contactsApi = {
       if (res && res.recent) res.recent = res.recent.map(mapContact);
       return res;
     }),
+};
+
+// ── Admin API ────────────────────────────────────────────────────────────────
+
+export type AdminUser = {
+  id: number;
+  name: string;
+  email: string;
+  is_verified: boolean;
+  role: string;
+  created_at: string;
+};
+
+export const adminApi = {
+  listUsers: () => request<AdminUser[]>("/admin/users"),
+
+  verifyUser: (id: number) =>
+    request<void>(`/admin/users/${id}/verify`, { method: "PATCH" }),
+
+  deleteUser: (id: number) =>
+    request<void>(`/admin/users/${id}`, { method: "DELETE" }),
 };

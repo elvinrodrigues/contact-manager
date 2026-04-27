@@ -1,27 +1,34 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { NavLink, useLocation } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import {
-  LayoutDashboard,
-  Users,
-  Menu,
-  X,
-} from "lucide-react";
+import { LayoutDashboard, Users, Menu, LogOut, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/hooks/use-auth";
 
-const NAV_ITEMS = [
+const BASE_NAV = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard },
   { to: "/contacts", label: "Contacts", icon: Users },
 ] as const;
 
+const ADMIN_NAV = { to: "/admin", label: "Admin", icon: Shield } as const;
+
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [avatarOpen, setAvatarOpen] = useState(false);
+  const avatarRef = useRef<HTMLDivElement>(null);
   const location = useLocation();
+  const { user, logout } = useAuth();
 
-  const pageTitle = NAV_ITEMS.find(
-    (item) => item.to === location.pathname
-  )?.label ?? "Dashboard";
+  const isAdmin = user?.role === "admin";
+
+  const navItems = isAdmin ? [...BASE_NAV, ADMIN_NAV] : [...BASE_NAV];
+
+  const pageTitle =
+    navItems.find((item) => item.to === location.pathname)?.label ??
+    "Dashboard";
+
+  const initial = (user?.name?.charAt(0) || user?.email?.charAt(0) || "?").toUpperCase();
 
   return (
     <div className="flex h-screen overflow-hidden bg-surface">
@@ -37,7 +44,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       <aside
         className={cn(
           "fixed inset-y-0 left-0 z-40 flex w-60 flex-col border-r border-border bg-surface-elevated transition-transform duration-200 md:static md:translate-x-0",
-          sidebarOpen ? "translate-x-0" : "-translate-x-full"
+          sidebarOpen ? "translate-x-0" : "-translate-x-full",
         )}
       >
         {/* Logo */}
@@ -46,13 +53,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             <Users className="h-4 w-4" />
           </div>
           <span className="text-sm font-bold tracking-tight">
-            ContactHub
+            Contact Manager
           </span>
         </div>
 
         {/* Nav items */}
         <nav className="flex-1 space-y-1 px-3 py-4">
-          {NAV_ITEMS.map((item) => (
+          {navItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -62,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                   "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors duration-150",
                   isActive
                     ? "bg-accent-brand-muted text-primary"
-                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                    : "text-muted-foreground hover:bg-surface-muted hover:text-foreground",
                 )
               }
             >
@@ -72,9 +79,18 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           ))}
         </nav>
 
-        {/* Bottom: Theme toggle */}
-        <div className="border-t border-border px-3 py-3">
+        {/* Bottom: Theme toggle + Logout */}
+        <div className="space-y-1 border-t border-border px-3 py-3">
           <ThemeToggle />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={logout}
+            className="w-full justify-start gap-3 px-3 text-sm font-medium text-muted-foreground hover:text-foreground"
+          >
+            <LogOut className="h-4 w-4 shrink-0" />
+            Logout
+          </Button>
         </div>
       </aside>
 
@@ -92,10 +108,43 @@ export function AppShell({ children }: { children: React.ReactNode }) {
           </Button>
           <h1 className="text-sm font-semibold">{pageTitle}</h1>
 
-          <div className="ml-auto flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-              E
-            </div>
+          {/* Profile avatar (top right) */}
+          <div className="ml-auto relative" ref={avatarRef}>
+            <button
+              onClick={() => setAvatarOpen(!avatarOpen)}
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+              title={user?.email || "Profile"}
+            >
+              {initial}
+            </button>
+
+            {/* Dropdown */}
+            {avatarOpen && (
+              <>
+                <div
+                  className="fixed inset-0 z-40"
+                  onClick={() => setAvatarOpen(false)}
+                />
+                <div className="absolute right-0 top-10 z-50 w-56 rounded-xl border border-border bg-surface-elevated p-2 shadow-lg">
+                  <div className="px-3 py-2 border-b border-border mb-1">
+                    <p className="text-sm font-medium truncate">{user?.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setAvatarOpen(false);
+                      logout();
+                    }}
+                    className="w-full justify-start gap-3 px-3 text-sm font-medium text-muted-foreground hover:text-foreground"
+                  >
+                    <LogOut className="h-4 w-4 shrink-0" />
+                    Logout
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         </header>
 

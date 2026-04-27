@@ -6,6 +6,7 @@ import (
 
 type Contact struct {
 	ID         int        `json:"id"`
+	UserID     int        `json:"user_id,omitempty"`
 	Name       string     `json:"name"`
 	Phone      string     `json:"phone"`
 	Email      string     `json:"email,omitempty"`

@@ -54,7 +54,7 @@ export function Navbar() {
           {/* Name + tag */}
           <div className="flex flex-col leading-none">
             <span className="font-bold text-[15px] tracking-tight text-foreground">
-              ContactHub
+              Contact Manager
             </span>
             <span className="hidden sm:flex items-center gap-0.5 text-[10px] font-medium text-muted-foreground leading-none mt-0.5">
               <Sparkles size={8} className="text-primary/70" />
