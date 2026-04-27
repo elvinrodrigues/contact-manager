@@ -127,7 +127,16 @@ contact-manager/
 │   ├── migrations/           # Idempotent SQL migration files
 │   ├── Dockerfile            # Multi-stage build (Go → Alpine)
 │   └── README.md             # ← Detailed backend documentation
-├── frontend/                 # React/Next.js frontend (optional)
+├── frontend/
+│   ├── src/
+│   │   ├── components/       # UI components (contacts, dashboard, layout)
+│   │   ├── hooks/            # Custom React hooks (auth, contacts, theme)
+│   │   ├── pages/            # Route pages (login, signup, dashboard, admin)
+│   │   ├── services/         # API client
+│   │   └── main.tsx          # Vite entry point
+│   ├── public/               # Static assets (icons, favicons)
+│   ├── index.html            # Vite HTML entry
+│   └── vite.config.ts        # Vite configuration
 ├── docker-compose.yml        # Backend + PostgreSQL orchestration
 └── README.md                 # ← You are here
 ```

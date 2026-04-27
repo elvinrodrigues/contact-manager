@@ -4,12 +4,27 @@ node_modules/
 dist/
 build/
 
-# Go
-bin/
-tmp/
+# Go compiled binaries
+*.exe
+*.out
+backend/api
+backend/main
 
 # Environment files
 .env
+.env.local
+*.local
+
+# Build artifacts
+*.log
+*.tsbuildinfo
 
 # OS
 .DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
