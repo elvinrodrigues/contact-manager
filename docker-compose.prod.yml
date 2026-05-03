@@ -1,0 +1,51 @@
+# ============================================================================
+# docker-compose.prod.yml — Production overrides
+# ============================================================================
+# Run with: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# ============================================================================
+
+services:
+  db:
+    # 'always' restart — ensures DB comes back after crashes or host reboots.
+    # Critical for production uptime.
+    restart: always
+
+    # No ports exposed — DB is only accessible within the Docker network.
+    # This is the most important security hardening step.
+
+    # Cap log output to prevent disk exhaustion on long-running production hosts.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Postgres performance tuning via command-line flags.
+    # Adjust shared_buffers and work_mem based on your host's available RAM.
+    command:
+      - "postgres"
+      - "-c"
+      - "shared_buffers=256MB"
+      - "-c"
+      - "max_connections=100"
+
+  backend:
+    # Expose backend only — this is the single entry point for external traffic.
+    # In a real production setup you'd front this with a reverse proxy (nginx/Caddy)
+    # and expose only 80/443 instead.
+    ports:
+      - "8080:8080"
+
+    # 'always' restart — auto-recover from OOM kills, panics, etc.
+    restart: always
+
+    # Production logging limits.
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+    # Disable debug email in production.
+    environment:
+      - DEBUG_EMAIL=false

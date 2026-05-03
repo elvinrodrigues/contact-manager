@@ -1,0 +1,27 @@
+# ============================================================================
+# docker-compose.dev.yml — Development overrides
+# ============================================================================
+# Run with: docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+# ============================================================================
+
+services:
+  db:
+    # Expose Postgres to host for local debugging (pgAdmin, psql, DBeaver, etc.)
+    ports:
+      - "5433:5432"
+
+    # 'unless-stopped' is better for dev — containers don't auto-start on
+    # machine reboot unless you explicitly left them running.
+    restart: unless-stopped
+
+  backend:
+    # Expose API port to host for local frontend / Postman / curl testing.
+    ports:
+      - "8080:8080"
+
+    # 'unless-stopped' — same rationale as db.
+    restart: unless-stopped
+
+    # Dev-friendly: extra env vars for debugging.
+    environment:
+      - DEBUG_EMAIL=true

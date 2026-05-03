@@ -2,6 +2,7 @@ package database
 
 import (
 	"database/sql"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -11,14 +12,52 @@ import (
 	_ "github.com/lib/pq"
 )
 
+// ConnectDB builds a Postgres DSN and connects with retry.
+//
+// The DSN is constructed from individual env vars so that credentials are
+// defined once (in .env.db) and shared with the backend container:
+//
+//   POSTGRES_USER     — DB username  (required, same var Postgres uses)
+//   POSTGRES_PASSWORD — DB password  (required, same var Postgres uses)
+//   POSTGRES_DB       — DB name      (required, same var Postgres uses)
+//   DB_HOST           — hostname     (default: "localhost"; set to "db" in Docker)
+//   DB_SSLMODE        — SSL mode     (default: "disable")
+//
+// If DATABASE_URL is set explicitly, it takes priority (backward compat).
 func ConnectDB() *sql.DB {
-	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		dbURL = "host=localhost user=contacts_app dbname=contacts_manager sslmode=disable"
-		log.Println("[BOOT] DATABASE_URL not set — using local default")
+	dsn := os.Getenv("DATABASE_URL")
+	if dsn != "" {
+		log.Println("[BOOT] Using explicit DATABASE_URL")
+	} else {
+		dsn = buildDSN()
 	}
 
-	return connectWithRetry(dbURL)
+	return connectWithRetry(dsn)
+}
+
+// buildDSN constructs a lib/pq connection string from individual env vars.
+func buildDSN() string {
+	user := getEnvOrDefault("POSTGRES_USER", "contacts_app")
+	pass := os.Getenv("POSTGRES_PASSWORD")
+	dbName := getEnvOrDefault("POSTGRES_DB", "contacts_manager")
+	host := getEnvOrDefault("DB_HOST", "localhost")
+	sslmode := getEnvOrDefault("DB_SSLMODE", "disable")
+
+	dsn := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=%s", host, user, dbName, sslmode)
+	if pass != "" {
+		dsn += fmt.Sprintf(" password=%s", pass)
+	}
+
+	log.Printf("[BOOT] Built DSN from env vars (host=%s, db=%s, user=%s)", host, dbName, user)
+	return dsn
+}
+
+// getEnvOrDefault reads an env var with a fallback default.
+func getEnvOrDefault(key, fallback string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return fallback
 }
 
 func connectWithRetry(dsn string) *sql.DB {

@@ -10,10 +10,14 @@ build/
 backend/api
 backend/main
 
-# Environment files
+# Environment files (real secrets — never commit)
 .env
 .env.local
+.env.db
+.env.backend
 *.local
+# Exception: example files are safe to commit (contain only placeholders)
+!*.example
 
 # Build artifacts
 *.log

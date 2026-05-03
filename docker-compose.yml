@@ -1,37 +1,82 @@
+# ============================================================================
+# docker-compose.yml — Base configuration (shared by dev and prod)
+# ============================================================================
+# Usage:
+#   Dev:  docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+#   Prod: docker compose -f docker-compose.yml -f docker-compose.prod.yml up --build -d
+# ============================================================================
 
 services:
+  # --------------------------------------------------------------------------
+  # PostgreSQL database
+  # --------------------------------------------------------------------------
   db:
     image: postgres:15
     container_name: contacthub-db
-    restart: always
-    environment:
-      POSTGRES_USER: contacts_app
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: contacts_manager
-    ports:
-      - "5433:5432"
+
+    # Load only Postgres-specific credentials.
+    # Contains: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB
+    env_file:
+      - .env.db
+
+    # Persist data across container removal/recreation.
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+    # Postgres healthcheck — backend will not start until this passes.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U contacts_app -d contacts_manager"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 5
+      start_period: 10s
 
+    networks:
+      - contact-manager-network
+
+  # --------------------------------------------------------------------------
+  # Go backend API
+  # --------------------------------------------------------------------------
   backend:
     build: ./backend
     container_name: contacthub-backend
-    restart: always
+
+    # Backend loads DB credentials from .env.db (single source of truth for
+    # POSTGRES_USER/PASSWORD/DB) plus its own app config from .env.backend.
+    # The Go code builds the DSN from these vars — no duplicated credentials.
+    env_file:
+      - .env.db
+      - .env.backend
+
+    # Wait for Postgres healthcheck before starting.
+    # The backend also has its own retry logic (10 attempts, 2s apart) as a
+    # secondary safety net against brief connectivity blips.
     depends_on:
       db:
         condition: service_healthy
-    ports:
-      - "8080:8080"
-    environment:
-      DATABASE_URL: host=db user=contacts_app password=password dbname=contacts_manager sslmode=disable
-    env_file:
-      - ./backend/.env
 
+    # Backend healthcheck — uses the /health endpoint which pings the DB.
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+    networks:
+      - contact-manager-network
+
+# ============================================================================
+# Named volumes — data survives container removal
+# ============================================================================
 volumes:
   postgres_data:
+    driver: local
 
+# ============================================================================
+# Explicit bridge network — all services communicate via service name (e.g. "db")
+# Keeps traffic isolated from other Docker projects on the same host.
+# ============================================================================
+networks:
+  contact-manager-network:
+    driver: bridge

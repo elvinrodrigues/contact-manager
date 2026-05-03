@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"strings"
@@ -23,7 +24,7 @@ type Config struct {
 // where appropriate and fatally exiting if required values are missing.
 func Load() *Config {
 	cfg := &Config{
-		DatabaseURL:     getEnv("DATABASE_URL", "host=localhost user=contacts_app dbname=contacts_manager sslmode=disable"),
+		DatabaseURL:     getEnv("DATABASE_URL", buildDSN()),
 		JWTSecret:       requireEnv("JWT_SECRET"),
 		Port:            getEnv("PORT", "8080"),
 		ResendAPIKey:    os.Getenv("RESEND_API_KEY"),
@@ -58,4 +59,20 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+// buildDSN constructs a lib/pq connection string from individual POSTGRES_* env vars.
+// This allows credentials to be defined once (in .env.db) without duplication.
+func buildDSN() string {
+	host := getEnv("DB_HOST", "localhost")
+	user := getEnv("POSTGRES_USER", "contacts_app")
+	pass := os.Getenv("POSTGRES_PASSWORD")
+	dbName := getEnv("POSTGRES_DB", "contacts_manager")
+	sslmode := getEnv("DB_SSLMODE", "disable")
+
+	dsn := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=%s", host, user, dbName, sslmode)
+	if pass != "" {
+		dsn += fmt.Sprintf(" password=%s", pass)
+	}
+	return dsn
 }
