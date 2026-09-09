@@ -2,6 +2,7 @@ export interface Contact {
   id: number;
   name: string;
   phone: string;
+  /** Absent when no address is recorded — the API omits the field. */
   email?: string;
   categoryId?: number;
   createdAt?: string;
@@ -17,9 +18,14 @@ export interface ContactFormData {
   categoryId?: number;
 }
 
+export interface ApiError {
+  code: string;
+  message: string;
+}
+
 export interface ApiResponse<T = unknown> {
   data: T | null;
-  error: string | null;
+  error: ApiError | null;
   message: string;
 }
 

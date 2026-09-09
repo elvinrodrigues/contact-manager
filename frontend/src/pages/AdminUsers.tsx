@@ -12,7 +12,7 @@ export default function AdminUsers() {
   const fetchUsers = async () => {
     try {
       const data = await adminApi.listUsers();
-      setUsers(data || []);
+      setUsers(data.users);
     } catch (err: any) {
       setError(err.message || "Failed to fetch users");
     } finally {
