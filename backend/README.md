@@ -309,6 +309,58 @@ repository — anyone who read it held credentials on every instance.
 `005_revoke_seeded_credentials.sql` revokes those accounts if your database
 already ran the old migrations; recover access with the password-reset flow.
 
+## Deployment
+
+Both services are defined in the repo so the configuration is reviewed like
+code: `render.yaml` for the API, `frontend/vercel.json` for the web app. That
+matters — the frontend was swapped from Next.js to Vite in April while the
+Vercel project stayed configured for Next.js, and nothing caught it until the
+next push four months later.
+
+### Backend (Render)
+
+New -> Blueprint -> point at this repo. It creates the Postgres instance and the
+Docker web service, wires `DATABASE_URL`, and generates `JWT_SECRET`.
+
+Then set the four dashboard-only values (they are `sync: false` so they never
+live in git):
+
+| Variable | Value |
+| -------- | ----- |
+| `ADMIN_EMAIL` | the account to grant admin on next boot; it must have signed up already |
+| `BASE_URL` | the Vercel URL, e.g. `https://contact-manager.vercel.app` |
+| `CORS_ALLOWED_ORIGINS` | the same Vercel URL |
+| `RESEND_API_KEY` | your Resend key, if you want real email |
+
+Render's free Postgres is **deleted after 30 days of inactivity**. When that
+happens the API exits at boot with `no such host` for the database hostname —
+recreate the database and re-link `DATABASE_URL`.
+
+### Frontend (Vercel)
+
+Set **Root Directory** to `frontend`. Everything else comes from
+`frontend/vercel.json`: framework preset, build command, output directory, and
+the SPA rewrite.
+
+Set one environment variable:
+
+| Variable | Value |
+| -------- | ----- |
+| `VITE_API_BASE_URL` | the Render URL, e.g. `https://contacthub-api.onrender.com` (no trailing slash) |
+
+Without it the bundle falls back to `/api`, which only exists behind the Vite
+dev proxy — every request would 404 against the static host.
+
+The catch-all rewrite in `vercel.json` is not optional. The app uses
+`BrowserRouter`, and the emailed verification link is a direct navigation to
+`/verify?token=...`; without the rewrite that path is served by the CDN, finds
+no file, and returns 404 before React ever loads.
+
+### First admin
+
+No account is seeded. Sign up through the deployed frontend, set `ADMIN_EMAIL`
+to that address, and redeploy — the role is granted at startup.
+
 ## Database & Migrations
 
 ### Migration System
