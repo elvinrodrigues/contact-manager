@@ -7,6 +7,20 @@ import type {
 } from "@/types/contact";
 import { getToken, removeToken } from "@/lib/token";
 
+/**
+ * Where the API lives.
+ *
+ * In development this stays "/api" and Vite's proxy forwards to the local
+ * backend (see vite.config.ts). In a deployed build there is no proxy, so
+ * VITE_API_BASE_URL must point at the backend's public origin — otherwise every
+ * request resolves against the static host and 404s.
+ */
+const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "/api").replace(/\/$/, "");
+
+function apiUrl(path: string): string {
+  return `${API_BASE}${path}`;
+}
+
 /** Everything the API returns, success or failure, uses this envelope. */
 interface Envelope<T> {
   data: T | null;
@@ -64,7 +78,7 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(`/api${url}`, { ...init, headers });
+  const res = await fetch(apiUrl(url), { ...init, headers });
 
   // A 401 means the session is gone — the token was revoked, expired, or the
   // account no longer exists. Clear it and start over.
@@ -85,7 +99,7 @@ async function request<T>(url: string, options?: RequestOptions): Promise<T> {
 
 /** Auth calls run without a token and surface their own errors. */
 async function publicRequest<T>(url: string, body: unknown, fallback: string): Promise<T> {
-  const res = await fetch(`/api${url}`, {
+  const res = await fetch(apiUrl(url), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -108,7 +122,7 @@ export const authApi = {
     publicRequest<Envelope<{ token: string }>>("/auth/login", data, "Login failed"),
 
   verifyEmail: async (token: string) => {
-    const res = await fetch(`/api/auth/verify?token=${encodeURIComponent(token)}`);
+    const res = await fetch(apiUrl(`/auth/verify?token=${encodeURIComponent(token)}`));
     const json = await readJson(res);
     if (!res.ok) {
       throw new ApiError(errorMessage(json, "Verification failed"), res.status, errorCode(json));
