@@ -1,59 +1,75 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
-	"strconv"
 
-	"contact-manager/internal/repository"
+	"contact-manager/internal/middleware"
+	"contact-manager/internal/services"
 	"contact-manager/internal/utils"
-
-	"github.com/go-chi/chi/v5"
 )
 
 type AdminHandler struct {
-	Repo *repository.UserRepository
+	Service *services.AdminService
 }
 
-func NewAdminHandler(repo *repository.UserRepository) *AdminHandler {
-	return &AdminHandler{Repo: repo}
+func NewAdminHandler(service *services.AdminService) *AdminHandler {
+	return &AdminHandler{Service: service}
+}
+
+func writeAdminError(w http.ResponseWriter, err error) {
+	switch {
+	case errors.Is(err, services.ErrNotFound):
+		utils.WriteError(w, http.StatusNotFound, utils.CodeNotFound, "user not found")
+	case errors.Is(err, services.ErrCannotDeleteSelf):
+		utils.WriteError(w, http.StatusConflict, utils.CodeConflict,
+			"you cannot delete your own account")
+	default:
+		utils.WriteError(w, http.StatusInternalServerError, utils.CodeInternal, "internal server error")
+	}
 }
 
 func (h *AdminHandler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.Repo.ListAllUsers()
+	page, limit, err := paging(r)
 	if err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "failed to fetch users")
+		writeProblem(w, err)
 		return
 	}
 
-	utils.WriteJSON(w, http.StatusOK, users, "users fetched")
+	result, err := h.Service.ListUsers(r.Context(), page, limit)
+	if err != nil {
+		writeAdminError(w, err)
+		return
+	}
+	utils.WriteJSON(w, http.StatusOK, result, "Users fetched successfully")
 }
 
 func (h *AdminHandler) VerifyUser(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil {
-		utils.WriteError(w, http.StatusBadRequest, "invalid user id")
+	id, ok := pathID(r, "id")
+	if !ok {
+		utils.WriteError(w, http.StatusBadRequest, utils.CodeValidation, "invalid user id")
 		return
 	}
 
-	if err := h.Repo.AdminVerifyUser(id); err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "failed to verify user")
+	if err := h.Service.VerifyUser(r.Context(), id); err != nil {
+		writeAdminError(w, err)
 		return
 	}
-
-	utils.WriteJSON(w, http.StatusOK, nil, "user verified")
+	utils.WriteJSON(w, http.StatusOK, nil, "User verified")
 }
 
 func (h *AdminHandler) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	id, err := strconv.Atoi(chi.URLParam(r, "id"))
-	if err != nil {
-		utils.WriteError(w, http.StatusBadRequest, "invalid user id")
+	id, ok := pathID(r, "id")
+	if !ok {
+		utils.WriteError(w, http.StatusBadRequest, utils.CodeValidation, "invalid user id")
 		return
 	}
 
-	if err := h.Repo.DeleteUser(id); err != nil {
-		utils.WriteError(w, http.StatusInternalServerError, "failed to delete user")
+	// An admin deleting themselves can lock the last administrator out of the
+	// deployment, so it is refused rather than silently allowed.
+	if err := h.Service.DeleteUser(r.Context(), id, middleware.GetUserID(r.Context())); err != nil {
+		writeAdminError(w, err)
 		return
 	}
-
-	utils.WriteJSON(w, http.StatusOK, nil, "user deleted")
+	utils.WriteJSON(w, http.StatusOK, nil, "User deleted")
 }

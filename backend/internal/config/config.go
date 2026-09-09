@@ -2,77 +2,126 @@ package config
 
 import (
 	"fmt"
-	"log"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
-// Config holds all environment-based configuration for the application.
-// Use Load() at startup to populate this struct from environment variables.
+// Config holds all environment-based configuration. Load it once at startup;
+// nothing below main should read the environment directly.
 type Config struct {
-	DatabaseURL     string
-	JWTSecret       string
-	Port            string
-	ResendAPIKey    string
-	BaseURL         string
-	DebugEmail      bool
-	ForceEmail      bool
-	CleanupInterval string
+	Port           string
+	AllowedOrigins []string
+
+	AdminEmail string
+
+	BaseURL      string
+	ResendAPIKey string
+	DebugEmail   bool
+
+	MaxBodyBytes    int64
+	ShutdownTimeout time.Duration
+
+	ReadHeaderTimeout time.Duration
+	ReadTimeout       time.Duration
+	WriteTimeout      time.Duration
+	IdleTimeout       time.Duration
 }
 
-// Load reads configuration from environment variables, applying defaults
-// where appropriate and fatally exiting if required values are missing.
-func Load() *Config {
+// Defaults for the HTTP server. The zero-value http.Server has no timeouts at
+// all, which leaves the process open to connections that never finish sending.
+const (
+	DefaultMaxBodyBytes    = 1 << 20 // 1 MiB
+	DefaultShutdownTimeout = 15 * time.Second
+
+	defaultReadHeaderTimeout = 5 * time.Second
+	defaultReadTimeout       = 15 * time.Second
+	defaultWriteTimeout      = 30 * time.Second
+	defaultIdleTimeout       = 60 * time.Second
+)
+
+// Load reads configuration and validates it. It returns an error rather than
+// exiting so the caller controls process lifetime.
+func Load() (*Config, error) {
+	if os.Getenv("JWT_SECRET") == "" {
+		return nil, fmt.Errorf("JWT_SECRET is required")
+	}
+
 	cfg := &Config{
-		DatabaseURL:     getEnv("DATABASE_URL", buildDSN()),
-		JWTSecret:       requireEnv("JWT_SECRET"),
-		Port:            getEnv("PORT", "8080"),
-		ResendAPIKey:    os.Getenv("RESEND_API_KEY"),
-		BaseURL:         getEnv("BASE_URL", "http://localhost:3000"),
-		DebugEmail:      strings.EqualFold(os.Getenv("DEBUG_EMAIL"), "true"),
-		ForceEmail:      strings.EqualFold(os.Getenv("FORCE_EMAIL"), "true"),
-		CleanupInterval: os.Getenv("CLEANUP_INTERVAL"),
+		Port:              getEnv("PORT", "8080"),
+		AllowedOrigins:    splitList(getEnv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")),
+		AdminEmail:        strings.ToLower(strings.TrimSpace(os.Getenv("ADMIN_EMAIL"))),
+		BaseURL:           strings.TrimSuffix(getEnv("BASE_URL", "http://localhost:3000"), "/"),
+		ResendAPIKey:      os.Getenv("RESEND_API_KEY"),
+		DebugEmail:        boolEnv("DEBUG_EMAIL"),
+		MaxBodyBytes:      int64Env("MAX_BODY_BYTES", DefaultMaxBodyBytes),
+		ShutdownTimeout:   DefaultShutdownTimeout,
+		ReadHeaderTimeout: defaultReadHeaderTimeout,
+		ReadTimeout:       defaultReadTimeout,
+		WriteTimeout:      defaultWriteTimeout,
+		IdleTimeout:       defaultIdleTimeout,
 	}
 
-	if cfg.ResendAPIKey == "" {
-		log.Println("[BOOT] WARNING: RESEND_API_KEY not set — emails will not be sent")
+	if len(cfg.AllowedOrigins) == 0 {
+		return nil, fmt.Errorf("CORS_ALLOWED_ORIGINS must list at least one origin")
 	}
-	if cfg.DebugEmail {
-		log.Println("[BOOT] DEBUG_EMAIL=true — emails will be printed to console instead of sent")
-	}
-
-	return cfg
+	return cfg, nil
 }
 
-// requireEnv reads an environment variable and fatally exits if it is empty.
-func requireEnv(key string) string {
-	v := os.Getenv(key)
-	if v == "" {
-		log.Fatalf("[BOOT] FATAL: %s environment variable is required", key)
+// Warnings returns non-fatal configuration problems worth logging at boot.
+func (c *Config) Warnings() []string {
+	var warnings []string
+	if c.ResendAPIKey == "" && !c.DebugEmail {
+		warnings = append(warnings,
+			"RESEND_API_KEY is not set and DEBUG_EMAIL is false — verification and reset emails will not be sent")
 	}
-	return v
+	if c.DebugEmail {
+		warnings = append(warnings,
+			"DEBUG_EMAIL=true — emails are logged as delivered rather than sent (token contents are still withheld)")
+	}
+	if c.AdminEmail == "" {
+		warnings = append(warnings,
+			"ADMIN_EMAIL is not set — no account will be granted the admin role at startup")
+	}
+	for _, origin := range c.AllowedOrigins {
+		if origin == "*" {
+			warnings = append(warnings,
+				"CORS_ALLOWED_ORIGINS contains '*' — any site can call this API with a user's credentials")
+		}
+	}
+	return warnings
 }
 
-// getEnv reads an environment variable, returning a fallback if empty.
 func getEnv(key, fallback string) string {
-	if v := os.Getenv(key); v != "" {
+	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
 		return v
 	}
 	return fallback
 }
 
-// buildDSN constructs a lib/pq connection string from individual POSTGRES_* env vars.
-// This allows credentials to be defined once (in .env.db) without duplication.
-func buildDSN() string {
-	host := getEnv("DB_HOST", "localhost")
-	user := getEnv("POSTGRES_USER", "contacts_app")
-	pass := os.Getenv("POSTGRES_PASSWORD")
-	dbName := getEnv("POSTGRES_DB", "contacts_manager")
-	sslmode := getEnv("DB_SSLMODE", "disable")
+func boolEnv(key string) bool {
+	return strings.EqualFold(os.Getenv(key), "true")
+}
 
-	dsn := fmt.Sprintf("host=%s user=%s dbname=%s sslmode=%s", host, user, dbName, sslmode)
-	if pass != "" {
-		dsn += fmt.Sprintf(" password=%s", pass)
+func int64Env(key string, fallback int64) int64 {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
 	}
-	return dsn
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil || v <= 0 {
+		return fallback
+	}
+	return v
+}
+
+func splitList(raw string) []string {
+	var out []string
+	for _, part := range strings.Split(raw, ",") {
+		if part = strings.TrimSpace(part); part != "" {
+			out = append(out, part)
+		}
+	}
+	return out
 }

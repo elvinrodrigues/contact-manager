@@ -3,12 +3,14 @@ package handlers
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"net/http"
 	"time"
+
+	"contact-manager/internal/utils"
 )
 
-// HealthHandler holds the DB reference for connectivity checks.
+const healthCheckTimeout = 2 * time.Second
+
 type HealthHandler struct {
 	DB *sql.DB
 }
@@ -17,25 +19,18 @@ func NewHealthHandler(db *sql.DB) *HealthHandler {
 	return &HealthHandler{DB: db}
 }
 
-// Health responds with the current status of the backend and its DB connection.
+// Health reports whether the process can reach its database. It uses the shared
+// response envelope so monitoring sees the same shape as every other endpoint.
 func (h *HealthHandler) Health(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+	ctx, cancel := context.WithTimeout(r.Context(), healthCheckTimeout)
 	defer cancel()
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if err := h.DB.PingContext(ctx); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status": "error",
-			"db":     "down",
-		})
+		utils.WriteJSON(w, http.StatusServiceUnavailable,
+			map[string]string{"status": "degraded", "db": "down"}, "Database unreachable")
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status": "ok",
-		"db":     "connected",
-	})
+	utils.WriteJSON(w, http.StatusOK,
+		map[string]string{"status": "ok", "db": "connected"}, "Service healthy")
 }

@@ -2,6 +2,11 @@ package models
 
 import "time"
 
+const (
+	RoleUser  = "user"
+	RoleAdmin = "admin"
+)
+
 type User struct {
 	ID           int       `json:"id"`
 	Name         string    `json:"name"`
@@ -9,8 +14,11 @@ type User struct {
 	PasswordHash string    `json:"-"` // never serialised
 	IsVerified   bool      `json:"is_verified"`
 	Role         string    `json:"role"`
+	TokenVersion int       `json:"-"` // bumped on password reset to revoke issued JWTs
 	CreatedAt    time.Time `json:"created_at"`
 }
+
+func (u *User) IsAdmin() bool { return u.Role == RoleAdmin }
 
 type SignupRequest struct {
 	Name     string `json:"name"`

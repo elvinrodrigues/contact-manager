@@ -2,6 +2,7 @@ package utils
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log"
@@ -11,30 +12,36 @@ import (
 	"time"
 )
 
-// IsDebugEmail returns true when DEBUG_EMAIL=true, which skips Resend and
-// prints verification/reset links directly to the console for local testing.
+const mailerTimeout = 10 * time.Second
+
+// IsDebugEmail returns true when DEBUG_EMAIL=true, which skips Resend and logs
+// that an email would have been sent. It never logs the body: verification and
+// reset links contain the raw token, and those are stored hashed precisely so
+// that reading them back out of a log is not possible.
 func IsDebugEmail() bool {
 	return strings.EqualFold(os.Getenv("DEBUG_EMAIL"), "true")
 }
 
-// SendEmail dispatches an HTML email via the Resend API.
-// It never returns an error — failures are logged so they don't break signup/reset flows.
-func SendEmail(to, subject, html string) {
-	// ── Debug mode: print to console instead of calling Resend ───────────
+// SendEmail dispatches an HTML email via the Resend API. It never returns an
+// error — failures are logged so they cannot break signup or reset flows. The
+// context lets a shutdown cancel an in-flight send.
+func SendEmail(ctx context.Context, to, subject, html string) {
 	if IsDebugEmail() {
-		log.Println("════════════════════════════════════════════════")
-		log.Println("[MAILER DEBUG] Email would be sent:")
-		log.Printf("  To:      %s", to)
-		log.Printf("  Subject: %s", subject)
-		log.Printf("  Body:    %s", html)
-		log.Println("════════════════════════════════════════════════")
+		log.Printf("[MAILER DEBUG] would send %q to %s (body withheld: contains a secret token)",
+			subject, maskEmail(to))
 		return
 	}
-	// ── Force recipient override for dev/testing ────────────────────────
+
+	// Optional dev override: redirect all mail to one inbox. The target must be
+	// supplied explicitly; there is no default recipient.
 	if strings.EqualFold(os.Getenv("FORCE_EMAIL"), "true") {
-		originalTo := to
-		to = "elvinrodrigues3456@gmail.com"
-		log.Printf("[MAILER] Original recipient: %s → Forced to: %s", maskEmail(originalTo), maskEmail(to))
+		override := strings.TrimSpace(os.Getenv("FORCE_EMAIL_TO"))
+		if override == "" {
+			log.Printf("[MAILER ERROR] FORCE_EMAIL=true but FORCE_EMAIL_TO is unset — refusing to send")
+			return
+		}
+		log.Printf("[MAILER] Redirecting %s -> %s (FORCE_EMAIL)", maskEmail(to), maskEmail(override))
+		to = override
 	}
 
 	apiKey := os.Getenv("RESEND_API_KEY")
@@ -43,8 +50,13 @@ func SendEmail(to, subject, html string) {
 		return
 	}
 
+	from := os.Getenv("MAIL_FROM")
+	if from == "" {
+		from = "ContactHub <onboarding@resend.dev>"
+	}
+
 	payload := map[string]interface{}{
-		"from":    "ContactHub <onboarding@resend.dev>",
+		"from":    from,
 		"to":      []string{to},
 		"subject": subject,
 		"html":    html,
@@ -56,34 +68,36 @@ func SendEmail(to, subject, html string) {
 		return
 	}
 
-	log.Printf("[MAILER] Sending email to %s | Subject: %s", maskEmail(to), subject)
+	sendCtx, cancel := context.WithTimeout(ctx, mailerTimeout)
+	defer cancel()
 
-	req, err := http.NewRequest("POST", "https://api.resend.com/emails", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(sendCtx, http.MethodPost,
+		"https://api.resend.com/emails", bytes.NewReader(jsonData))
 	if err != nil {
 		log.Printf("[MAILER ERROR] Failed to create request: %v", err)
 		return
 	}
-
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	log.Printf("[MAILER] Sending %q to %s", subject, maskEmail(to))
+
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Printf("[MAILER ERROR] HTTP request failed: %v", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	bodyBytes, _ := io.ReadAll(resp.Body)
-	bodyStr := string(bodyBytes)
-
 	if resp.StatusCode >= 400 {
-		log.Printf("[MAILER ERROR] Resend returned %d: %s", resp.StatusCode, bodyStr)
+		// Cap the echoed body: it is a third party's response, not ours.
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 512))
+		log.Printf("[MAILER ERROR] Resend returned %d: %s", resp.StatusCode, strings.TrimSpace(string(body)))
 		return
 	}
+	_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 4096))
 
-	log.Printf("[MAILER OK] Status %d | Response: %s", resp.StatusCode, bodyStr)
+	log.Printf("[MAILER OK] Resend accepted message for %s (status %d)", maskEmail(to), resp.StatusCode)
 }
 
 func maskEmail(email string) string {
@@ -91,16 +105,13 @@ func maskEmail(email string) string {
 	if len(parts) != 2 || len(parts[0]) == 0 {
 		return "***@***"
 	}
-
-	localPart := parts[0]
-	if len(localPart) <= 2 {
+	if len(parts[0]) <= 2 {
 		return "***@" + parts[1]
 	}
-
-	return localPart[:2] + "***@" + parts[1]
+	return parts[0][:2] + "***@" + parts[1]
 }
 
-// GetBaseURL reads the frontend base URL from the environment, defaulting to localhost.
+// GetBaseURL reads the frontend base URL from the environment.
 func GetBaseURL() string {
 	baseURL := os.Getenv("BASE_URL")
 	if baseURL == "" {
@@ -108,4 +119,3 @@ func GetBaseURL() string {
 	}
 	return strings.TrimSuffix(baseURL, "/")
 }
-
