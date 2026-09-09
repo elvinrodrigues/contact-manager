@@ -1,0 +1,79 @@
+# ============================================================================
+# render.yaml — Render Blueprint for the ContactHub backend
+# ============================================================================
+# Keeping this in the repo means the service definition is reviewed like code.
+# The previous setup lived only in the dashboard, which is how the frontend was
+# swapped from Next.js to Vite in April without anything noticing.
+#
+# Apply with: Render Dashboard -> New -> Blueprint -> point at this repo.
+# ============================================================================
+
+databases:
+  - name: contacthub-db
+    databaseName: contacts_manager
+    user: contacts_app
+    plan: free
+    # Render's free Postgres is deleted after 30 days of inactivity. If the
+    # backend starts reporting "no such host" for the database, that is what
+    # happened — recreate it and update DATABASE_URL.
+
+services:
+  - type: web
+    name: contacthub-api
+    runtime: docker
+    plan: free
+    region: oregon
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+
+    # Hits GET /health, which pings the database. Render restarts the instance
+    # if this stops responding.
+    healthCheckPath: /health
+
+    envVars:
+      # Wired automatically from the database defined above.
+      - key: DATABASE_URL
+        fromDatabase:
+          name: contacthub-db
+          property: connectionString
+
+      # Generated once by Render and kept. Changing it signs every user out.
+      - key: JWT_SECRET
+        generateValue: true
+
+      # ── Set these in the dashboard; sync:false keeps them out of the repo ──
+
+      # Account granted the admin role at startup. It must already have signed
+      # up. No account is an admin unless it is named here.
+      - key: ADMIN_EMAIL
+        sync: false
+
+      # Public URL of the frontend. Used to build verification and reset links,
+      # so a wrong value produces emails whose links go nowhere.
+      - key: BASE_URL
+        sync: false
+
+      # Browser origins allowed to call this API — the same Vercel URL.
+      # Never "*": that lets any site call the API with a user's session.
+      - key: CORS_ALLOWED_ORIGINS
+        sync: false
+
+      # Render terminates TLS in front of the service, so the direct peer is
+      # its proxy. Without this the X-Forwarded-For header is ignored and every
+      # request is rate-limited as if it came from one client.
+      - key: TRUSTED_PROXY_CIDRS
+        value: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
+
+      - key: DB_SSLMODE
+        value: require
+      - key: DEBUG_EMAIL
+        value: "false"
+      - key: FORCE_EMAIL
+        value: "false"
+      - key: CLEANUP_INTERVAL
+        value: 24h
